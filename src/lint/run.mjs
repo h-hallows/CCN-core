@@ -13,7 +13,10 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
-import { FORBIDDEN_COPY, FORBIDDEN_IDENTIFIERS, LINTED_EXTENSIONS } from './forbidden.mjs';
+import {
+  EMPLOYEE_ALLOWED_IN, EMPLOYEE_TERM, findIdentifierHits, FORBIDDEN_COPY,
+  LINTED_EXTENSIONS,
+} from './forbidden.mjs';
 
 const ROOT = process.cwd();
 const targets = process.argv.slice(2);
@@ -89,31 +92,35 @@ for (const target of targets) {
     const text = stripComments(raw, ext);
     const haystack = text.toLowerCase();
 
-    for (const phrase of FORBIDDEN_COPY) {
+    const rel = relative(ROOT, file);
+    // `employee` is permitted only inside the statutory texts.
+    const terms = EMPLOYEE_ALLOWED_IN.some((allowed) => rel.includes(allowed))
+      ? FORBIDDEN_COPY
+      : [...FORBIDDEN_COPY, EMPLOYEE_TERM];
+
+    for (const phrase of terms) {
       let from = 0;
       for (;;) {
         const at = haystack.indexOf(phrase, from);
         if (at === -1) break;
         const { line, col } = locate(text, at);
         findings.push({
-          file: relative(ROOT, file), line, col, invariant: 'I9',
-          message: `forbidden copy "${phrase}" — providers are referred providers`,
+          file: rel, line, col, invariant: 'I9',
+          message: phrase === EMPLOYEE_TERM
+            ? `forbidden copy "${phrase}" — permitted only inside the statutory texts`
+            : `forbidden copy "${phrase}" — providers are referred providers`,
         });
         from = at + phrase.length;
       }
     }
 
     if (ext === '.md') continue;                      // documentation names what it forbids
-    for (const { pattern, invariant } of FORBIDDEN_IDENTIFIERS) {
-      pattern.lastIndex = 0;
-      let m;
-      while ((m = pattern.exec(text)) !== null) {
-        const { line, col } = locate(text, m.index);
-        findings.push({
-          file: relative(ROOT, file), line, col, invariant,
-          message: `forbidden identifier "${m[0]}" — see ${invariant} in INVARIANTS.md`,
-        });
-      }
+    for (const hit of findIdentifierHits(text)) {
+      const { line, col } = locate(text, hit.index);
+      findings.push({
+        file: rel, line, col, invariant: hit.invariant,
+        message: `forbidden identifier "${hit.match}" — see ${hit.invariant} in INVARIANTS.md`,
+      });
     }
   }
 }

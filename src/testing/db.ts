@@ -9,13 +9,8 @@ export function seededDb(): Promise<DbHandle> {
   prepared ??= (async () => {
     const handle = await getDb();
     await applyMigrations(handle, { quiet: true });
-    await handle.exec(`
-      SET app.operator_id = 'test';
-      TRUNCATE case_month_hours, service_failures, metric_events, audit_log, referral_feedback,
-               referrals, disclosures, timeline_entries, coverage_gaps, cases, households,
-               credential_events, credentials, providers, referral_partners, sessions,
-               auth_tokens RESTART IDENTITY CASCADE;
-    `);
+    await handle.exec(`SET app.operator_id = 'test';`);
+    await truncateAll(handle);
     await seed(handle);
     return handle;
   })();
@@ -61,4 +56,24 @@ export async function providerIdByName(handle: DbHandle, name: string): Promise<
   );
   if (!row) throw new Error(`no provider named ${name}`);
   return row.id;
+}
+
+/**
+ * Empty every table, enumerated from the database rather than from a list.
+ *
+ * A hand-maintained list silently stops covering tables that later migrations add — it
+ * had already fallen behind `users` and all ten front-door tables, which is invisible on
+ * an in-memory database that starts empty anyway, and shows up as a duplicate-key error
+ * the second time the suite runs against a real Postgres.
+ */
+export async function truncateAll(handle: DbHandle): Promise<void> {
+  const rows = await handle.query<{ table_name: string }>(
+    `SELECT table_name FROM information_schema.tables
+      WHERE table_schema = current_schema()
+        AND table_type = 'BASE TABLE'
+        AND table_name <> '_migrations'`,
+  );
+  if (rows.length === 0) return;
+  const names = rows.map((r) => `"${r.table_name}"`).join(', ');
+  await handle.exec(`TRUNCATE ${names} RESTART IDENTITY CASCADE;`);
 }

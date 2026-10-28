@@ -8,6 +8,7 @@
  */
 import { openMigrationDb, type DbHandle } from './client';
 import { applyMigrations, loadWorkspaceEnv } from './migrate';
+import { truncateAll } from '../testing/db';
 import { addDays, civilLA, formatISODate } from '../domain/dates';
 import { writtenStatementDueOn } from '../domain/businessDays';
 
@@ -792,13 +793,8 @@ async function main(): Promise<void> {
   }
 
   await applyMigrations(handle, { quiet: true });
-  await handle.exec(`
-    SET app.operator_id = 'seed';
-    TRUNCATE case_month_hours, service_failures, metric_events, audit_log, referral_feedback,
-             referrals, disclosures, timeline_entries, coverage_gaps, cases, households,
-             credential_events, credentials, providers, referral_partners, sessions,
-             auth_tokens RESTART IDENTITY CASCADE;
-  `);
+  await handle.exec(`SET app.operator_id = 'seed';`);
+  await truncateAll(handle);
   console.log(`seeding for ${TODAY_ISO} (America/Los_Angeles)`);
   await seed(handle);
   await handle.close();

@@ -21,15 +21,25 @@ Penalty exposure: $2,500 per violation under § 1812.5095(k).
 | **I6** | The referral fee is charged to the household as a fixed percentage of job cost. Never deducted from provider earnings. The registry is never obligated to pay a provider when the household has not paid. | (b)(7), (c), § 687.2(g) | `cases.fee_charged_to` is `CHECK (fee_charged_to = 'household')`. No `provider_deduction` column anywhere. |
 | **I7** | Satisfaction feedback about a referral may be recorded. It may **not** be routed into provider discipline, coaching, training, performance improvement or any corrective workflow. | § 687.2(e) | `referral_feedback.use_restriction` is `CHECK (= 'referral_decisions_only')`. No `performance_review` / `coaching` / `corrective_action` table. Feedback is read only by referral-decision code paths. |
 | **I8** | No tools, supplies, equipment, uniforms, badges or devices issued to providers. | (b)(6), § 687.2(f) | No inventory or asset-assignment table. CI banned-table test. |
-| **I9** | Forbidden strings in any operator-, provider- or client-facing copy: `independent contractor`, `self-employed`, `our nurses`, `our caregivers`, `our staff`, `our employees`, `employee`. Providers are **referred providers**. | (g) | `scripts/copy-lint.mjs` over `/app`, `/components`, `/content`. Fails the build. |
+| **I9** | Forbidden strings in any operator-, provider- or client-facing copy: `independent contractor`, `self-employed`, `self employed`, `our nurses`, `our caregivers`, `our staff`, `our employees`, `home health`, `surety bond`, `bonded and insured`, `licensed and bonded`. `employee` is forbidden too, except inside the statutory texts, which cannot state what the registry is *not* without the word. Providers are **referred providers**. | (g), (i)–(j), HSC § 1726(c) | `ccn-lint` over each app's `app/`, `components/`, `content/`. Fails the build. Ruleset: `packages/core/src/lint/forbidden.mjs`. |
 | **I10** | Needs profiles are recorded as stated by the household. The system never generates, suggests or templates clinical content. | (b)(5) + HHA licensure | `cases.needs_authored_by` is `CHECK (= 'household')`. No generation endpoint. Free-text input only, no templates. |
 | **I11** | A skilled case cannot reach `referred` status without an ordering physician on the household record. | § 1812.524(a), (c) | `trg_physician_skilled` trigger on `cases`, plus an assertion inside the referral transaction. |
 | **I12** | A provider with any required credential missing or expired is excluded from every shortlist. No override exists, for any role. | Diligence | Computed in the query layer (`lib/queries/match.ts`), never in the UI. An ineligible provider must not reach the client. |
 
-## I13 — operational, not statutory
+## I13 — now enforced, not a note
 
 **Never advertise the surety bond or any licensure** in public-facing copy
-(§ 1812.5095(i)–(j)). V1 has no public surface, so this is a Phase 2 note.
+(§ 1812.5095(i)–(j)). This was a Phase 2 note while there was no public surface; it is
+now part of the I9 ruleset, because the front door is being built and the lint has to be
+in place before the first marketing page is written, not after.
+
+Two of those terms are about licensure rather than employment:
+
+- **`home health`** implies a Home Health Agency licence. A registry is exempt from that
+  licensure under HSC § 1726(c) and 22 CCR § 74600(b) *precisely because it is not one*.
+  Describing itself in those words forfeits the exemption it relies on.
+- **the bond and licence terms** are barred from advertising outright by
+  § 1812.5095(i)–(j).
 
 ## Rules for contributors
 
