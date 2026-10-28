@@ -11,7 +11,7 @@
  * them, or add an override path.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -277,6 +277,26 @@ describe('I9 — ccn-lint is a build gate', () => {
     }
   }
 
+  /** Plant files at a nested path, so the statutory-text exception can be exercised. */
+  function lintAt(subdir: string, files: Record<string, string>): { ok: boolean; output: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'ccn-lint-'));
+    try {
+      const target = join(dir, subdir);
+      mkdirSync(target, { recursive: true });
+      for (const [name, body] of Object.entries(files)) {
+        writeFileSync(join(target, name), body);
+      }
+      try {
+        return { ok: true, output: execFileSync('node', [LINT, dir], { encoding: 'utf8' }) };
+      } catch (err) {
+        const e = err as { stdout?: string; stderr?: string };
+        return { ok: false, output: `${e.stdout ?? ''}${e.stderr ?? ''}` };
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   it('passes on copy that calls them referred providers', () => {
     const { ok, output } = lint({
       'ok.tsx': 'export const P = () => <p>Referred providers on our roster</p>;\n',
@@ -316,12 +336,52 @@ describe('I9 — ccn-lint is a build gate', () => {
     expect(output).toMatch(/I1/);
   });
 
-  it('documents the known gap: camelCase slips past the word boundaries', () => {
-    // `taskList` and `trainingModules` are NOT caught, because the patterns are
-    // word-bounded. Pinned here so the limitation is visible rather than assumed away;
-    // widening it belongs with the architecture spec § 2.5 ruleset merge.
-    const { ok } = lint({ 'camel.ts': 'export const taskList = [];\n' });
+  it.each([
+    ['taskList', 'I2'], ['TaskList', 'I2'], ['task_list', 'I2'],
+    ['trainingModules', 'I1'], ['competencyCheck', 'I1'],
+    ['coachingNotes', 'I7'], ['badgeNumber', 'I8'],
+  ])('catches camelCase: %s (%s)', (identifier, invariant) => {
+    const { ok, output } = lint({ 'camel.ts': `export const ${identifier} = [];\n` });
+    expect(ok).toBe(false);
+    expect(output).toMatch(new RegExp(invariant));
+  });
+
+  it('does not catch a word that merely contains one, like multitasking', () => {
+    const { ok } = lint({ 'fine.ts': 'export const multitasking = true;\n' });
     expect(ok).toBe(true);
+  });
+
+  it('forbids the licensure claims § 1812.5095(i)–(j) bars from advertising', () => {
+    for (const phrase of ['surety bond', 'bonded and insured', 'licensed and bonded']) {
+      const { ok, output } = lint({ 'ad.tsx': `export const P = () => <p>We are ${phrase}.</p>;\n` });
+      expect(ok).toBe(false);
+      expect(output).toContain(phrase);
+    }
+  });
+
+  it('forbids "home health", which would claim the licensure HSC § 1726(c) exempts', () => {
+    const { ok, output } = lint({
+      'svc.tsx': 'export const P = () => <p>Our home health service</p>;\n',
+    });
+    expect(ok).toBe(false);
+    expect(output).toContain('home health');
+  });
+
+  it('forbids "employee" in ordinary copy', () => {
+    const { ok, output } = lint({
+      'copy.tsx': 'export const P = () => <p>Ask an employee</p>;\n',
+    });
+    expect(ok).toBe(false);
+    expect(output).toMatch(/employee/);
+  });
+
+  it('permits "employee" inside the statutory texts, the one place it belongs', () => {
+    const { ok, output } = lintAt('content/statutory', {
+      'notice.ts':
+        "export const NOTICE = 'The registry is not the employer of the referred provider.';\n",
+    });
+    expect(ok).toBe(true);
+    expect(output).toMatch(/clean/);
   });
 
   it('is the ruleset the apps consume, not a second copy of it', async () => {
