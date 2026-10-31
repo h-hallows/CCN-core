@@ -30,6 +30,12 @@ export const inquiries = pgTable('inquiries', {
   sourcePath: text('source_path'),
   utm: jsonb('utm'),
   partnerId: uuid('partner_id').references(() => referralPartners.id),
+  /**
+   * The partner block for an account-less referral: who sent it, their role, the
+   * patient's initials, and their confirmation that the family agreed. Never a full
+   * patient name. See migration 0005.
+   */
+  referrer: jsonb('referrer'),
   /** Set when the operator converts this into a household. */
   householdId: uuid('household_id').references(() => households.id),
   handledAt: timestamp('handled_at', { withTimezone: true }),

@@ -13,6 +13,7 @@ export * from './portal';
 export * from './intake';
 export * from './audit';
 export * from './nurses';
+export * from './intakeSupport';
 
 import { providers, credentials } from './providers';
 import { households, cases } from './households';
