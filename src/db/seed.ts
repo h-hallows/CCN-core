@@ -747,6 +747,34 @@ async function seed(handle: DbHandle): Promise<void> {
     }
   }
 
+  // Rate ranges for the public pages. Operator-maintained in the console; seeded here so
+  // the marketing site has live figures to render rather than hardcoded ones.
+  const RATES: [string, string, number, number][] = [
+    ['companion', 'companion', 34, 46],
+    ['companion', 'hca', 38, 52],
+    ['personal_care', 'hca', 40, 54],
+    ['personal_care', 'cna', 46, 62],
+    ['post_surgical', 'cna', 52, 68],
+    ['post_surgical', 'lvn', 68, 88],
+    ['post_surgical', 'rn', 85, 125],
+    ['skilled_nursing', 'lvn', 72, 95],
+    ['skilled_nursing', 'rn', 90, 135],
+    ['overnight_newborn', 'cna', 48, 65],
+    ['overnight_newborn', 'rn', 85, 120],
+    ['respite', 'hca', 38, 52],
+    ['hospice_support', 'cna', 50, 66],
+    ['hospice_support', 'rn', 88, 128],
+  ];
+  for (const [service, level, low, high] of RATES) {
+    await q(
+      `INSERT INTO rate_ranges (service_key, credential_level, low, high, effective_from, note)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (service_key, credential_level, effective_from) DO NOTHING`,
+      [service, level, low, high, d(-30),
+        'Provider-set and negotiated directly with the household.'],
+    );
+  }
+
   // One recorded service failure, so the capacity measure has a non-zero denominator and
   // the operator can see what it counts.
   const [oldest] = await q<{ id: string }>(
