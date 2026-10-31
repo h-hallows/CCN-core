@@ -32,6 +32,18 @@ export const disclosures = pgTable('disclosures', {
   writtenDueOn: date('written_due_on').notNull(),
   writtenSentOn: date('written_sent_on'),
   writtenMethod: text('written_method'),
+  /**
+   * § 1812.533(b)(4). Required for RN and LVN referrals, and the timing differs from
+   * the written statement above: this must reach the patient BEFORE care begins, not
+   * within three business days after the referral. A case cannot go active until
+   * nurseDisclosureSentOn is set.
+   */
+  nurseDisclosureRequired: boolean('nurse_disclosure_required').notNull().default(false),
+  nurseDisclosureSentOn: date('nurse_disclosure_sent_on'),
+  nurseDisclosureMethod: text('nurse_disclosure_method'),
+  complaintContactsSentOn: date('complaint_contacts_sent_on'),
+  /** Which version of the statutory text was delivered. See content/statutory. */
+  statutoryVersion: text('statutory_version').notNull().default('v1'),
 }, (t) => [
   index('disclosures_case_idx').on(t.caseId, t.disclosedAt),
   check('disclosures_method_live', sql`${t.method} IN ('phone','in_person')`),
