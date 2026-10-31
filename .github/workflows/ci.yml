@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The invariant suite lives here so it cannot be weakened in one consumer
+      # without the other noticing. It runs against an in-memory Postgres with the
+      # real migrations applied, so the triggers and constraints are exercised.
+      - name: Tests, including the invariant gate
+        run: npm test
