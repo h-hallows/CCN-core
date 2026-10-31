@@ -1,5 +1,10 @@
 {
-  "name": "@ccn/core",
+  "name": "@h-hallows/core",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/h-hallows/CCN-Registry.git",
+    "directory": "packages/core"
+  },
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -13,8 +18,14 @@
     "./lint": "./src/lint/forbidden.mjs",
     "./testing": "./src/testing/db.ts"
   },
-  "bin": { "ccn-lint": "./src/lint/run.mjs" },
-  "files": ["src", "migrations", "INVARIANTS.md"],
+  "bin": {
+    "ccn-lint": "./src/lint/run.mjs"
+  },
+  "files": [
+    "src",
+    "migrations",
+    "INVARIANTS.md"
+  ],
   "scripts": {
     "db:migrate": "tsx src/db/migrate.ts",
     "db:deploy": "tsx src/db/migrate.ts",
@@ -38,5 +49,7 @@
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
   },
-  "publishConfig": { "registry": "https://npm.pkg.github.com" }
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
 }
