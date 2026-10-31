@@ -120,6 +120,18 @@ function isProduction(env: EnvLike): boolean {
 }
 
 /** Host and database only. Never the password, and never logged in full. */
+/**
+ * Which connection variables are present, by name only — never a value.
+ *
+ * The names are already public in this repository, and when a deployment reports
+ * "not configured" the next question is always whether the variable is missing or
+ * whether the deployment predates it. This answers that without a Vercel login.
+ */
+export function describeEnvPresence(env: EnvLike): Record<string, boolean> {
+  const keys = [...POOLED_KEYS, ...DIRECT_KEYS] as readonly (keyof EnvLike)[];
+  return Object.fromEntries(keys.map((k) => [k, Boolean(env[k]?.trim())]));
+}
+
 export function describeConnection(url: string): string {
   try {
     const parsed = new URL(url);
