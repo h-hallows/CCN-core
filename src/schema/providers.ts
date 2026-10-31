@@ -53,6 +53,16 @@ export const credentials = pgTable('credentials', {
   verificationSource: text('verification_source').notNull(),
   documentUrl: text('document_url'),
   notes: text('notes'),
+  /**
+   * § 1812.528 — the licence physically inspected, with its expiry noted. A different
+   * act from the primary-source lookup in verificationSource, and the statute wants
+   * both.
+   */
+  inspectedAt: date('inspected_at'),
+  inspectedBy: text('inspected_by'),
+  inspectedExpiryNoted: date('inspected_expiry_noted'),
+  experienceVerifiedAt: date('experience_verified_at'),
+  experienceVerifiedNote: text('experience_verified_note'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

@@ -547,15 +547,26 @@ async function seed(handle: DbHandle): Promise<void> {
     providerIds.set(p.name, row.id);
 
     for (const c of p.creds) {
+      // § 1812.528: an RN or LVN licence must have been physically inspected, with its
+      // expiry noted on the application. A database lookup is a different act and the
+      // statute wants both, so the constraint refuses a nurse licence without it.
+      const isNurseLicence = c.type === 'rn_license' || c.type === 'lvn_license';
       const [cred] = await q<{ id: string }>(
         `INSERT INTO credentials
            (provider_id, type, identifier, issued_on, expires_on, verified_on, verified_by,
-            verification_source, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+            verification_source, notes,
+            inspected_at, inspected_by, inspected_expiry_noted,
+            experience_verified_at, experience_verified_note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
         [row.id, c.type, c.identifier ?? null,
           c.expires === null ? d(c.verified - 30) : d(c.expires - 730),
           c.expires === null ? null : d(c.expires),
-          d(c.verified), 'operator', c.source, null],
+          d(c.verified), 'operator', c.source, null,
+          isNurseLicence ? d(c.verified) : null,
+          isNurseLicence ? 'operator' : null,
+          isNurseLicence && c.expires !== null ? d(c.expires) : null,
+          isNurseLicence ? d(c.verified) : null,
+          isNurseLicence ? 'Two prior engagements confirmed in writing with the referring practices.' : null],
       );
       if (cred) {
         await q(

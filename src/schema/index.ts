@@ -12,6 +12,7 @@ export * from './auth';
 export * from './portal';
 export * from './intake';
 export * from './audit';
+export * from './nurses';
 
 import { providers, credentials } from './providers';
 import { households, cases } from './households';

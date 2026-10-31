@@ -14,8 +14,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 import {
-  EMPLOYEE_ALLOWED_IN, EMPLOYEE_TERM, findIdentifierHits, FORBIDDEN_COPY,
-  LINTED_EXTENSIONS,
+  copyTermsFor, EMPLOYEE_TERM, findIdentifierHits, isStatutoryPath, LINTED_EXTENSIONS,
 } from './forbidden.mjs';
 
 const ROOT = process.cwd();
@@ -93,10 +92,7 @@ for (const target of targets) {
     const haystack = text.toLowerCase();
 
     const rel = relative(ROOT, file);
-    // `employee` is permitted only inside the statutory texts.
-    const terms = EMPLOYEE_ALLOWED_IN.some((allowed) => rel.includes(allowed))
-      ? FORBIDDEN_COPY
-      : [...FORBIDDEN_COPY, EMPLOYEE_TERM];
+    const terms = copyTermsFor(rel);
 
     for (const phrase of terms) {
       let from = 0;
@@ -114,7 +110,8 @@ for (const target of targets) {
       }
     }
 
-    if (ext === '.md') continue;                      // documentation names what it forbids
+    // Documentation names what it forbids, and the statutory texts quote the statute.
+    if (ext === '.md' || isStatutoryPath(rel)) continue;
     for (const hit of findIdentifierHits(text)) {
       const { line, col } = locate(text, hit.index);
       findings.push({
