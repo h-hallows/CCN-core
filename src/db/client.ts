@@ -51,6 +51,30 @@ export interface Tx {
 const OPERATOR_ID = 'operator';
 const OPERATOR_SETTING = `SET app.operator_id = '${OPERATOR_ID}'`;
 
+/**
+ * The claims the RLS policies in migration 0003 read.
+ *
+ * `request.jwt.claims` is the GUC Supabase's own auth.jwt() reads, so the same policies
+ * are enforced identically here, on a local Docker Postgres and on Supabase. A
+ * connection that sets nothing matches no policy and sees no rows, which is the correct
+ * default for a database holding health-adjacent information about private individuals.
+ *
+ * No spaces: this is passed as a libpq startup option, where a space would need
+ * escaping. Keep it that way.
+ */
+export interface Claims {
+  ccn_role: 'operator' | 'household' | 'provider' | 'partner';
+  ccn_user_id?: string;
+  ccn_household_id?: string;
+  ccn_provider_id?: string;
+}
+
+export const OPERATOR_CLAIMS: Claims = { ccn_role: 'operator' };
+
+export function claimsSetting(claims: Claims): string {
+  return `SET request.jwt.claims = '${JSON.stringify(claims).replace(/'/g, "''")}'`;
+}
+
 let cached: Promise<DbHandle> | null = null;
 
 export function getDb(): Promise<DbHandle> {
@@ -88,7 +112,7 @@ async function connectPostgres(connectionString: string): Promise<DbHandle> {
     // parameter means the connection is never usable without it. Doing the same from a
     // `connect` event handler races the first real query on that connection, because the
     // handler cannot be awaited.
-    options: `-c app.operator_id=${OPERATOR_ID}`,
+    options: `-c app.operator_id=${OPERATOR_ID} -c request.jwt.claims=${JSON.stringify(OPERATOR_CLAIMS)}`,
   });
   return {
     db: drizzlePg(pool, { schema }),
@@ -118,7 +142,7 @@ async function connectPostgres(connectionString: string): Promise<DbHandle> {
 async function connectPglite(dataDir: string | undefined): Promise<DbHandle> {
   const { PGlite } = await import('@electric-sql/pglite');
   const client = dataDir ? new PGlite(dataDir) : new PGlite();
-  await client.exec(OPERATOR_SETTING);
+  await client.exec(`${OPERATOR_SETTING}; ${claimsSetting(OPERATOR_CLAIMS)};`);
   return {
     db: drizzlePglite(client, { schema }),
     exec: (sql) => client.exec(sql).then(() => undefined),

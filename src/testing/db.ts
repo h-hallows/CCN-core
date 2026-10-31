@@ -1,4 +1,4 @@
-import { getDb, type DbHandle } from '../db/client';
+import { getDb, type DbHandle, type Tx } from '../db/client';
 import { applyMigrations } from '../db/migrate';
 import { seed } from '../db/seed';
 
@@ -76,4 +76,41 @@ export async function truncateAll(handle: DbHandle): Promise<void> {
   if (rows.length === 0) return;
   const names = rows.map((r) => `"${r.table_name}"`).join(', ');
   await handle.exec(`TRUNCATE ${names} RESTART IDENTITY CASCADE;`);
+}
+
+/**
+ * Run statements as one of the four audiences.
+ *
+ * `SET LOCAL` inside a transaction, so the claim cannot leak into the next test through
+ * a pooled connection — which would quietly turn a household into an operator and make
+ * every policy assertion pass.
+ */
+export async function asClaims<T>(
+  handle: DbHandle,
+  claims: Record<string, string> | null,
+  fn: (tx: Tx) => Promise<T>,
+): Promise<T> {
+  return handle.transaction(async (tx) => {
+    // Switch off the owning/superuser role first. Postgres exempts a superuser from
+    // row-level security outright and a table owner unless the table is FORCEd, so
+    // asserting the policy matrix as the connection's default role would pass every
+    // test while enforcing nothing.
+    await tx.query(`SET LOCAL ROLE ccn_app`);
+    await tx.query(
+      `SELECT set_config('request.jwt.claims', $1, true)`,
+      [claims ? JSON.stringify(claims) : ''],
+    );
+    return fn(tx);
+  });
+}
+
+/** Assert a statement is refused, whether by a policy or by a guard trigger. */
+export async function expectDenied(run: () => Promise<unknown>): Promise<void> {
+  let denied = false;
+  try {
+    await run();
+  } catch {
+    denied = true;
+  }
+  if (!denied) throw new Error('expected the statement to be denied, but it succeeded');
 }
