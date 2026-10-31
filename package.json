@@ -2,8 +2,7 @@
   "name": "@h-hallows/core",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/h-hallows/CCN-Registry.git",
-    "directory": "packages/core"
+    "url": "git+https://github.com/h-hallows/CCN-core.git"
   },
   "version": "0.1.0",
   "private": false,
@@ -32,7 +31,8 @@
     "db:reset": "tsx src/db/migrate.ts --reset",
     "db:seed": "tsx src/db/seed.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ci": "npm run typecheck && npm run test"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
@@ -48,8 +48,5 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   }
 }
