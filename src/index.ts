@@ -1,5 +1,5 @@
 /**
- * @ccn/core — owns the database and the rules that must not differ between surfaces.
+ * @h-hallows/core — owns the database and the rules that must not differ between surfaces.
  *
  * Both the operator console and the public front door consume this package. The reason
  * it exists: eligibility, the credential matrix, the care vocabulary and the forbidden

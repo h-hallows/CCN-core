@@ -2,7 +2,7 @@
  * § 7.3 — the schema half of the CI gate.
  *
  * These assertions are about the database itself: triggers, check constraints, enum
- * membership, row-level security. They live in @ccn/core so that no consuming app can
+ * membership, row-level security. They live in @h-hallows/core so that no consuming app can
  * weaken them for itself. The behavioural half — the referral transaction, the shortlist
  * query layer — is in apps/registry/tests/referral.test.ts.
  *
