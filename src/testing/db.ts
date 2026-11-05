@@ -68,14 +68,36 @@ export async function providerIdByName(handle: DbHandle, name: string): Promise<
  */
 export async function truncateAll(handle: DbHandle): Promise<void> {
   const rows = await handle.query<{ table_name: string }>(
+    // ORDER BY is load-bearing, not tidiness. TRUNCATE takes an ACCESS EXCLUSIVE lock
+    // on every table named, in the order named. information_schema returns rows in no
+    // guaranteed order, so two truncates could take the same locks in different orders
+    // and deadlock — which is exactly what happened against a real Postgres: one run
+    // green, the next failing in beforeAll with "deadlock detected" and skipping a
+    // whole file. Every caller now takes the locks in the same order, so they queue
+    // instead of deadlocking.
     `SELECT table_name FROM information_schema.tables
       WHERE table_schema = current_schema()
         AND table_type = 'BASE TABLE'
-        AND table_name <> '_migrations'`,
+        AND table_name <> '_migrations'
+      ORDER BY table_name`,
   );
   if (rows.length === 0) return;
   const names = rows.map((r) => `"${r.table_name}"`).join(', ');
-  await handle.exec(`TRUNCATE ${names} RESTART IDENTITY CASCADE;`);
+
+  // Ordering removes the cause; the retry covers anything else holding a lock when a
+  // suite starts, which would otherwise fail the whole file rather than one test.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await handle.exec(`TRUNCATE ${names} RESTART IDENTITY CASCADE;`);
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (attempt >= 3 || !/deadlock|lock timeout|could not obtain lock/i.test(message)) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
+    }
+  }
 }
 
 /**

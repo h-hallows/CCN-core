@@ -668,3 +668,48 @@ describe('W9 — a provider learns the area and nothing else about the household
     expect(rows[0]!.area).toBeNull();
   });
 });
+
+describe('W9 — a provider reads back what they wrote, and nothing else', () => {
+  let noteId: string;
+  let referredCase: string;
+
+  beforeAll(async () => {
+    referredCase = (await one<{ case_id: string }>(
+      `SELECT case_id FROM referrals WHERE provider_id = $1 LIMIT 1`, [providerId]))
+      .case_id;
+    noteId = (await one<{ id: string }>(
+      `INSERT INTO timeline_entries (case_id, type, author, body, provider_id)
+       VALUES ($1, 'note', 'provider', 'Opportunity response: not taking this one.', $2)
+       RETURNING id`, [referredCase, providerId])).id;
+  });
+
+  it('reads its own note', async () => {
+    const rows = await asClaims(db, provider(), (tx) =>
+      tx.query<{ id: string }>(`SELECT id FROM timeline_entries WHERE id = $1`, [noteId]));
+    expect(rows).toHaveLength(1);
+  });
+
+  it('cannot read the operator\'s notes on the same case', async () => {
+    const operatorNote = await one<{ id: string }>(
+      `INSERT INTO timeline_entries (case_id, type, author, body)
+       VALUES ($1, 'call', 'operator', 'Rang the daughter about the physician letter.')
+       RETURNING id`, [referredCase]);
+    const rows = await asClaims(db, provider(), (tx) =>
+      tx.query(`SELECT id FROM timeline_entries WHERE id = $1`, [operatorNote.id]));
+    expect(rows).toEqual([]);
+  });
+
+  it('sees only entries it authored, across the whole table', async () => {
+    const rows = await asClaims(db, provider(), (tx) =>
+      tx.query<{ provider_id: string | null }>(`SELECT provider_id FROM timeline_entries`));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.provider_id).toBe(providerId);
+  });
+
+  it('still cannot change or delete one — the table is append-only for everyone', async () => {
+    await expectDenied(() => db.query(
+      `UPDATE timeline_entries SET body = 'rewritten' WHERE id = $1`, [noteId]));
+    await expectDenied(() => db.query(
+      `DELETE FROM timeline_entries WHERE id = $1`, [noteId]));
+  });
+});
