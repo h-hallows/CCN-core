@@ -47,7 +47,35 @@ path was unambiguous. Four of the cells below pointed at paths that no longer ex
 | **I9** | Forbidden strings in any operator-, provider- or client-facing copy: `independent contractor`, `self-employed`, `self employed`, `our nurses`, `our caregivers`, `our staff`, `our employees`, `home health`, `surety bond`, `bonded and insured`, `licensed and bonded`. `employee` is forbidden too, except inside the statutory texts, which cannot state what the registry is *not* without the word. Providers are **referred providers**. | (g), (i)–(j), HSC § 1726(c) | `ccn-lint` over each app's `app/`, `components/`, `content/`. Fails the build. Ruleset: `CCN-core: src/lint/forbidden.mjs`. |
 | **I10** | Needs profiles are recorded as stated by the household. The system never generates, suggests or templates clinical content. | (b)(5) + HHA licensure | `cases.needs_authored_by` is `CHECK (= 'household')`. No generation endpoint. Free-text input only, no templates. |
 | **I11** | A skilled case cannot reach `referred` status without an ordering physician on the household record. | § 1812.524(a), (c) | `trg_physician_skilled` trigger on `cases`, plus an assertion inside the referral transaction. |
-| **I12** | A provider with any required credential missing or expired is excluded from every shortlist. No override exists, for any role. | Diligence | One implementation, in `CCN-core: src/domain/match.ts` and `src/domain/credentials.ts`, never in the UI. Re-checked at render on the public platform, because a shortlist published Monday can hold a provider whose clearance lapses Tuesday: `CCN-external: lib/portal.ts`. An ineligible provider must not reach the client, and the reason must not reach them either. |
+| **I12** | A provider with any required credential missing or expired is excluded from every shortlist. No override exists, for any role — **including the provider's own**. | Diligence | One implementation, in `CCN-core: src/domain/match.ts` and `src/domain/credentials.ts`, never in the UI. Re-checked at render on the public platform, because a shortlist published Monday can hold a provider whose clearance lapses Tuesday: `CCN-external: lib/portal.ts`. An ineligible provider must not reach the client, and the reason must not reach them either. A provider has **no INSERT on `credentials`**: uploads land in `credential_submissions`, which nothing computes eligibility from, and an operator creates the verified row (`CCN-core: migrations/0008_credential_submissions.sql`). |
+
+### I12 — the hole that was there, and what it teaches
+
+Until migration 0008, `credentials_provider_insert` (migration 0003) let a provider
+insert their own credential row. `eligibility()` counts the **presence** of a row of the
+required type as that requirement being satisfied. Together, those meant a provider
+could insert their own Live Scan — the background check — with
+`verified_by = 'me', verification_source = 'I checked it myself'`, and move from
+ineligible to eligible. That is onto a household's shortlist, with no check having
+happened. Demonstrated against the seed before the fix; denied by the policy after it.
+
+Nothing had exploited it because nothing provider-facing had been built. W8 was the
+milestone that would have shipped it.
+
+Two things let it survive review, and both are worth remembering:
+
+1. **A test asserted it.** `tests/rls.test.ts` had
+   `it('provider role: INSERT INTO credentials for themselves succeeds')`, inside a
+   describe block named *"a provider uploads, the operator verifies"*. The intent in
+   the title was right and the assertion was its inverse. A green suite said the rule
+   held.
+2. **A NOT NULL disguised it.** `verified_on`, `verified_by` and `verification_source`
+   are NOT NULL with no defaults, so a naive insert fails. That looks like a control
+   and is not one — a deliberate insert simply supplies them.
+
+The lesson for this file: an invariant is only as good as the assertion that is
+actually written, and "the obvious statement fails" is not the same as "the action is
+refused".
 
 ## I13 — now enforced, not a note
 

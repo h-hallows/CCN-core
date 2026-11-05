@@ -64,3 +64,11 @@ export const userRole = pgEnum('user_role', ['operator', 'household', 'provider'
 export const shortlistRequestStatus = pgEnum('shortlist_request_status', [
   'pending', 'referred', 'declined_by_household', 'withdrawn',
 ]);
+
+/**
+ * Web build spec § 4.2, W8. What a provider hands in, before anyone has checked it.
+ * A submission is not a credential and nothing computes eligibility from one.
+ */
+export const credentialSubmissionState = pgEnum('credential_submission_state', [
+  'submitted', 'accepted', 'rejected',
+]);

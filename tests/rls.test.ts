@@ -179,12 +179,31 @@ describe('§ 10 — a household sees only its own case', () => {
 });
 
 describe('§ 10 — a provider uploads, the operator verifies', () => {
-  it('provider role: INSERT INTO credentials for themselves succeeds', async () => {
+  it('provider role: INSERT INTO credentials is denied', async () => {
+    /*
+     * This test used to assert the opposite — that the insert SUCCEEDS — under a
+     * describe block named "a provider uploads, the operator verifies". The intent was
+     * right and the assertion inverted it, which is how migration 0003's
+     * `credentials_provider_insert` policy survived review.
+     *
+     * It mattered because `eligibility()` counts the presence of a row of the required
+     * type as that requirement being met. A provider could therefore insert their own
+     * Live Scan and move onto a household's shortlist with no background check — I12
+     * broken by the role it most exists to constrain. Migration 0008 drops the policy;
+     * uploads go to `credential_submissions`, which nothing computes eligibility from.
+     */
+    await expectDenied(() => asClaims(db, provider(), (tx) =>
+      tx.query(
+        `INSERT INTO credentials (provider_id, type, verified_on, verified_by, verification_source)
+         VALUES ($1, 'immunization', current_date, 'provider', 'uploaded document')`,
+        [providerId])));
+  });
+
+  it('provider role: hands the same thing in as a submission instead', async () => {
     const rows = await asClaims(db, provider(), (tx) =>
       tx.query<{ id: string }>(
-        `INSERT INTO credentials (provider_id, type, verified_on, verified_by, verification_source)
-         VALUES ($1, 'immunization', current_date, 'provider', 'uploaded document')
-         RETURNING id`, [providerId]));
+        `INSERT INTO credential_submissions (provider_id, type, note)
+         VALUES ($1, 'immunization', 'uploaded document') RETURNING id`, [providerId]));
     expect(rows).toHaveLength(1);
   });
 
@@ -206,13 +225,13 @@ describe('§ 10 — a provider uploads, the operator verifies', () => {
     expect(after).toEqual(before);
   });
 
-  it('provider role: cannot insert a credential for somebody else', async () => {
+  it('provider role: cannot submit on behalf of somebody else', async () => {
     const other = await one<{ id: string }>(
       `SELECT id FROM providers WHERE id <> $1 LIMIT 1`, [providerId]);
     await expectDenied(() => asClaims(db, provider(), (tx) =>
       tx.query(
-        `INSERT INTO credentials (provider_id, type, verified_on, verified_by, verification_source)
-         VALUES ($1, 'other', current_date, 'provider', 'x')`, [other.id])));
+        `INSERT INTO credential_submissions (provider_id, type) VALUES ($1, 'other')`,
+        [other.id])));
   });
 });
 
@@ -458,5 +477,126 @@ describe('W7 — a household can still name the person in its house', () => {
       db, { ccn_role: 'household', ccn_household_id: otherHouseholdId, ccn_user_id: userId },
       (tx) => tx.query(`SELECT id FROM providers WHERE id = $1`, [engagedId]));
     expect(rows).toEqual([]);
+  });
+});
+
+/**
+ * Migration 0008 — a provider submits, the operator verifies. W8.
+ *
+ * The first test here is a regression test for a hole that was real. Migration 0003
+ * granted providers INSERT on `credentials`, and `eligibility()` counts the presence of
+ * a row of the required type as that requirement being met. Together those let a
+ * provider insert their own Live Scan and move themselves onto a household's shortlist.
+ * Nothing provider-facing had been built, so nothing had exploited it; W8 is the
+ * milestone that would have.
+ */
+describe('W8 — a provider cannot verify themselves', () => {
+  let providerUserId: string;
+  let selfId: string;
+  let otherProviderId: string;
+
+  const self = () => ({
+    ccn_role: 'provider', ccn_user_id: providerUserId, ccn_provider_id: selfId,
+  });
+
+  beforeAll(async () => {
+    selfId = (await one<{ id: string }>(
+      `SELECT id FROM providers WHERE full_name = 'Tomás Beltrán'`)).id;
+    otherProviderId = (await one<{ id: string }>(
+      `SELECT id FROM providers WHERE id <> $1 LIMIT 1`, [selfId])).id;
+
+    providerUserId = (await one<{ id: string }>(
+      `INSERT INTO users (email, display_name, role)
+       VALUES ('w8-provider@example.com', 'W8 provider', 'provider')
+       ON CONFLICT (email) DO UPDATE SET role = 'provider' RETURNING id`)).id;
+    await db.query(
+      `INSERT INTO provider_users (user_id, provider_id) VALUES ($1,$2)
+       ON CONFLICT DO NOTHING`, [providerUserId, selfId]);
+  });
+
+  it('cannot insert a credential at all, which is the whole point', async () => {
+    await expectDenied(() => asClaims(db, self(), (tx) => tx.query(
+      `INSERT INTO credentials
+         (provider_id, type, verified_on, verified_by, verification_source, expires_on)
+       VALUES ($1, 'live_scan', current_date, 'me', 'I checked it myself',
+               current_date + 365)`,
+      [selfId])));
+  });
+
+  it('cannot insert one even with the verification fields left out', async () => {
+    await expectDenied(() => asClaims(db, self(), (tx) => tx.query(
+      `INSERT INTO credentials (provider_id, type) VALUES ($1, 'live_scan')`,
+      [selfId])));
+  });
+
+  it('cannot amend an expiry on a credential it already has', async () => {
+    await asClaims(db, self(), async (tx) => {
+      const rows = await tx.query(
+        `UPDATE credentials SET expires_on = current_date + 3650
+          WHERE provider_id = $1 RETURNING id`, [selfId]);
+      expect(rows).toEqual([]);
+    });
+  });
+
+  it('still sees its own credentials, so it knows what is missing', async () => {
+    const rows = await asClaims(db, self(), (tx) =>
+      tx.query(`SELECT id FROM credentials WHERE provider_id = $1`, [selfId]));
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it('sees nobody else\'s', async () => {
+    const rows = await asClaims(db, self(), (tx) =>
+      tx.query(`SELECT id FROM credentials WHERE provider_id = $1`, [otherProviderId]));
+    expect(rows).toEqual([]);
+  });
+
+  it('may hand in a submission, which is not a credential', async () => {
+    const rows = await asClaims(db, self(), (tx) => tx.query<{ id: string; state: string }>(
+      `INSERT INTO credential_submissions (provider_id, type, identifier, note)
+       VALUES ($1, 'live_scan', 'ATI-12345', 'Done last week, receipt attached')
+       RETURNING id, state::text AS state`, [selfId]));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.state).toBe('submitted');
+  });
+
+  it('a submission does not make anyone eligible — nothing reads it as one', async () => {
+    // The guarantee in database terms: handing something in adds no row to the table
+    // eligibility() is computed from.
+    const creds = await one<{ n: string }>(
+      `SELECT count(*)::text AS n FROM credentials
+        WHERE provider_id = $1 AND type = 'live_scan' AND deleted_at IS NULL`, [selfId]);
+    expect(Number(creds.n)).toBe(0);
+  });
+
+  it('cannot hand in something that claims to have been reviewed', async () => {
+    await expectDenied(() => asClaims(db, self(), (tx) => tx.query(
+      `INSERT INTO credential_submissions
+         (provider_id, type, state, reviewed_at, reviewed_by)
+       VALUES ($1, 'tb_clearance', 'accepted', now(), 'me')`, [selfId])));
+  });
+
+  it('cannot submit on behalf of another provider', async () => {
+    await expectDenied(() => asClaims(db, self(), (tx) => tx.query(
+      `INSERT INTO credential_submissions (provider_id, type)
+       VALUES ($1, 'tb_clearance')`, [otherProviderId])));
+  });
+
+  it('cannot review its own submission afterwards', async () => {
+    await asClaims(db, self(), async (tx) => {
+      const rows = await tx.query(
+        `UPDATE credential_submissions SET state = 'accepted' WHERE provider_id = $1
+         RETURNING id`, [selfId]);
+      expect(rows).toEqual([]);
+    });
+  });
+
+  it('sees its own submissions and nobody else\'s', async () => {
+    await db.query(
+      `INSERT INTO credential_submissions (provider_id, type) VALUES ($1, 'cpr_bls')`,
+      [otherProviderId]);
+    const rows = await asClaims(db, self(), (tx) =>
+      tx.query<{ provider_id: string }>(`SELECT provider_id FROM credential_submissions`));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.provider_id).toBe(selfId);
   });
 });

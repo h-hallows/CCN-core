@@ -1,7 +1,7 @@
 /** Spec § 3.2 — providers, credentials and the append-only renewal history. */
-import { boolean, date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { providerStatus, providerType, credentialType } from './enums';
+import { providerStatus, providerType, credentialType, credentialSubmissionState } from './enums';
 
 export const providers = pgTable('providers', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -83,3 +83,42 @@ export const credentialEvents = pgTable('credential_events', {
   newVerifiedOn: date('new_verified_on'),
   note: text('note'),
 });
+
+/**
+ * What a provider hands in. Migration 0008, web build spec § 4.2.
+ *
+ * NOT a credential, deliberately, and the absent columns are the design: no
+ * `expiresOn`, no `verifiedOn`, no `verifiedBy`, no `verificationSource`. None of those
+ * is a fact a provider is in a position to assert about themselves, and `eligibility()`
+ * counts a `credentials` row of the required type as that requirement being met — so a
+ * provider who could create one could put themselves on a household's shortlist. They
+ * cannot: migration 0008 drops the insert policy that allowed it and routes uploads
+ * here, where nothing reads them as proof of anything.
+ *
+ * The operator checks the document against the issuing body, creates the `credentials`
+ * row, and `credentialId` points at it, so the trail runs from what was handed in to
+ * what was verified.
+ */
+export const credentialSubmissions = pgTable('credential_submissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  providerId: uuid('provider_id').notNull().references(() => providers.id),
+  type: credentialType('type').notNull(),
+  /** The provider's own reference. Believed by nobody until the operator checks it. */
+  identifier: text('identifier'),
+  documentUrl: text('document_url'),
+  note: text('note'),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+  state: credentialSubmissionState('state').notNull().default('submitted'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedBy: text('reviewed_by'),
+  reviewNote: text('review_note'),
+  credentialId: uuid('credential_id').references(() => credentials.id),
+}, (t) => [
+  index('credential_submissions_provider').on(t.providerId, t.submittedAt),
+  check('submission_reviewed_has_reviewer', sql`
+    (${t.state} = 'submitted' AND ${t.reviewedAt} IS NULL AND ${t.reviewedBy} IS NULL)
+    OR (${t.state} <> 'submitted' AND ${t.reviewedAt} IS NOT NULL AND ${t.reviewedBy} IS NOT NULL)`),
+  check('submission_accepted_has_credential', sql`
+    (${t.state} = 'accepted' AND ${t.credentialId} IS NOT NULL)
+    OR (${t.state} <> 'accepted' AND ${t.credentialId} IS NULL)`),
+]);
