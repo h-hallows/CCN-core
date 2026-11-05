@@ -239,3 +239,103 @@ describe('the default is nothing', () => {
     expect(read).toEqual([]);
   });
 });
+
+/**
+ * Migration 0006 — the two reads the client portal needs. Web build spec § 4.1, W7.
+ *
+ * Both tables were operator-only. The policies added here are SELECT and nothing else:
+ * a household may see the gaps in its own cover and read back the feedback it wrote,
+ * and may still not write either, nor see anybody else's.
+ */
+describe('W7 — what the client portal may read', () => {
+  let gapId: string;
+  let ownReferralId: string;
+  let otherReferralId: string;
+  let feedbackId: string;
+
+  beforeAll(async () => {
+    gapId = (await one<{ id: string }>(
+      `INSERT INTO coverage_gaps (case_id, on_date, block, note)
+       VALUES ($1, current_date + 3, 'AM', 'arranging cover') RETURNING id`,
+      [caseId])).id;
+
+    // A referral on this household's case, and one on somebody else's.
+    ownReferralId = (await one<{ id: string }>(
+      `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by)
+       VALUES ($1, $2, $3, 'operator') RETURNING id`,
+      [caseId, providerId, disclosureId])).id;
+
+    const otherCase = await one<{ id: string }>(
+      `SELECT id FROM cases WHERE household_id = $1 LIMIT 1`, [otherHouseholdId]);
+    otherReferralId = (await one<{ id: string }>(
+      `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by)
+       VALUES ($1, $2, $3, 'operator') RETURNING id`,
+      [otherCase.id, providerId, disclosureId])).id;
+
+    feedbackId = (await one<{ id: string }>(
+      `INSERT INTO referral_feedback (referral_id, referral_service_rating, would_refer_again, notes)
+       VALUES ($1, 4, true, 'The call before the introduction was the useful part.')
+       RETURNING id`, [ownReferralId])).id;
+
+    await db.query(
+      `INSERT INTO referral_feedback (referral_id, referral_service_rating, notes)
+       VALUES ($1, 2, 'Not ours to read.')`, [otherReferralId]);
+  });
+
+  it('a household sees a gap in the cover on its own case', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query<{ id: string }>(`SELECT id FROM coverage_gaps WHERE id = $1`, [gapId]));
+    expect(rows).toHaveLength(1);
+  });
+
+  it('a household sees no gap on anybody else\'s case', async () => {
+    const rows = await asClaims(
+      db, { ccn_role: 'household', ccn_household_id: otherHouseholdId, ccn_user_id: userId },
+      (tx) => tx.query(`SELECT id FROM coverage_gaps WHERE id = $1`, [gapId]));
+    expect(rows).toEqual([]);
+  });
+
+  it('a household still cannot create or resolve a gap itself', async () => {
+    await expectDenied(() => asClaims(db, household(), (tx) =>
+      tx.query(
+        `INSERT INTO coverage_gaps (case_id, on_date, block) VALUES ($1, current_date, 'PM')`,
+        [caseId])));
+    await asClaims(db, household(), async (tx) => {
+      // An UPDATE with no policy matches no rows rather than raising.
+      const rows = await tx.query(
+        `UPDATE coverage_gaps SET resolved_at = now() WHERE id = $1 RETURNING id`, [gapId]);
+      expect(rows).toEqual([]);
+    });
+  });
+
+  it('a household reads back the feedback it wrote', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query<{ id: string; use_restriction: string }>(
+        `SELECT id, use_restriction FROM referral_feedback WHERE id = $1`, [feedbackId]));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.use_restriction).toBe('referral_decisions_only');
+  });
+
+  it('a household cannot read feedback about another household\'s referral', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query(`SELECT id FROM referral_feedback WHERE referral_id = $1`, [otherReferralId]));
+    expect(rows).toEqual([]);
+  });
+
+  it('feedback cannot be revised afterwards, by anyone with a policy', async () => {
+    // A statement that can be rewritten later is a weaker record of what was said. No
+    // UPDATE policy exists for any role but the operator, and none for DELETE at all.
+    await asClaims(db, household(), async (tx) => {
+      const rows = await tx.query(
+        `UPDATE referral_feedback SET notes = 'rewritten' WHERE id = $1 RETURNING id`,
+        [feedbackId]);
+      expect(rows).toEqual([]);
+    });
+  });
+
+  it('I7 holds: the use restriction is still the only value the check allows', async () => {
+    await expectDenied(() => db.query(
+      `INSERT INTO referral_feedback (referral_id, use_restriction)
+       VALUES ($1, 'performance_review')`, [ownReferralId]));
+  });
+});
