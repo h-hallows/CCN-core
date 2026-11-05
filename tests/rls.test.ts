@@ -124,10 +124,49 @@ describe('§ 10 — a household sees only its own case', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('sees only providers on its own bench, not the whole roster', async () => {
+  it('sees only providers it is engaged with, not the whole roster', async () => {
     const rows = await asClaims(db, household(), (tx) =>
       tx.query<{ id: string }>(`SELECT id FROM providers`));
-    expect(rows.map((r) => r.id)).toEqual([providerId]);
+    const visible = rows.map((r) => r.id);
+
+    expect(visible, 'the provider on this bench should be visible').toContain(providerId);
+
+    const all = await one<{ n: string }>(`SELECT count(*)::text AS n FROM providers`);
+    expect(visible.length).toBeLessThan(Number(all.n));
+
+    // Was `toEqual([providerId])`, an exact list that migration 0007 widened: a
+    // household can now also see a provider referred to one of its cases, named on one
+    // as primary or alternate, covering a gap, or asked about on a bench since
+    // withdrawn. The seed's own case has a primary and two alternates, so the exact
+    // list was always going to be brittle.
+    //
+    // The replacement asserts the thing that actually matters, and more strictly than
+    // a count would: every provider visible to this household has a real relationship
+    // with it. Written as its own query rather than by calling the policy's helper, so
+    // a predicate that forgot to scope by household would still fail here.
+    const related = await db.query<{ id: string }>(
+      `SELECT p.id FROM providers p
+        WHERE EXISTS (SELECT 1 FROM published_shortlist_items i
+                        JOIN published_shortlists s ON s.id = i.shortlist_id
+                        JOIN cases c ON c.id = s.case_id
+                       WHERE i.provider_id = p.id AND c.household_id = $1)
+           OR EXISTS (SELECT 1 FROM referrals r JOIN cases c ON c.id = r.case_id
+                       WHERE r.provider_id = p.id AND c.household_id = $1)
+           OR EXISTS (SELECT 1 FROM cases c
+                       WHERE c.household_id = $1
+                         AND (c.primary_provider_id = p.id
+                              OR p.id = ANY(c.alternate_provider_ids)))
+           OR EXISTS (SELECT 1 FROM coverage_gaps g JOIN cases c ON c.id = g.case_id
+                       WHERE g.resolved_provider_id = p.id AND c.household_id = $1)
+           OR EXISTS (SELECT 1 FROM shortlist_requests sr
+                        JOIN published_shortlists s ON s.id = sr.shortlist_id
+                        JOIN cases c ON c.id = s.case_id
+                       WHERE sr.provider_id = p.id AND c.household_id = $1)`,
+      [householdId]);
+    const allowed = new Set(related.map((r) => r.id));
+    for (const id of visible) {
+      expect(allowed.has(id), `provider ${id} is visible with no relationship`).toBe(true);
+    }
   });
 
   it('a withdrawn shortlist disappears', async () => {
@@ -337,5 +376,87 @@ describe('W7 — what the client portal may read', () => {
     await expectDenied(() => db.query(
       `INSERT INTO referral_feedback (referral_id, use_restriction)
        VALUES ($1, 'performance_review')`, [ownReferralId]));
+  });
+});
+
+/**
+ * Migration 0007 — a household may see a provider it is actually engaged with.
+ *
+ * 0003 scoped provider visibility to a LIVE bench, which silently ends the moment the
+ * operator withdraws the shortlist after making the referral. These assert the view
+ * survives that, and that it still does not extend to a stranger.
+ */
+describe('W7 — a household can still name the person in its house', () => {
+  let engagedId: string;
+  let strangerId: string;
+  let withdrawnListId: string;
+
+  beforeAll(async () => {
+    engagedId = (await one<{ id: string }>(
+      `SELECT id FROM providers WHERE full_name = 'Grace Okonkwo'`)).id;
+    strangerId = (await one<{ id: string }>(
+      `SELECT p.id FROM providers p
+        WHERE p.id NOT IN (SELECT provider_id FROM referrals)
+          AND p.id NOT IN (SELECT provider_id FROM published_shortlist_items)
+          AND p.id NOT IN (SELECT provider_id FROM shortlist_requests)
+        LIMIT 1`)).id;
+
+    // Referred to this household's case, then the bench taken down — the ordinary
+    // sequence, and the one that used to make the provider invisible.
+    await db.query(
+      `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by)
+       VALUES ($1, $2, $3, 'operator')`,
+      [caseId, engagedId, disclosureId]);
+
+    withdrawnListId = (await one<{ id: string }>(
+      `INSERT INTO published_shortlists (case_id, published_by, withdrawn_at)
+       VALUES ($1, 'operator', now()) RETURNING id`, [caseId])).id;
+    await db.query(
+      `INSERT INTO published_shortlist_items (shortlist_id, provider_id, position)
+       VALUES ($1, $2, 1)`, [withdrawnListId, engagedId]);
+  });
+
+  it('sees the referred provider even though the bench is withdrawn', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query<{ full_name: string }>(
+        `SELECT full_name FROM providers WHERE id = $1`, [engagedId]));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.full_name).toBe('Grace Okonkwo');
+  });
+
+  it('cannot see the bench row itself, which is still withdrawn', async () => {
+    // 0007 widened provider visibility and nothing else. The withdrawn shortlist stays
+    // out of reach, so this is not a back door into a bench the operator took down.
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query(`SELECT id FROM published_shortlist_items WHERE shortlist_id = $1`,
+        [withdrawnListId]));
+    expect(rows).toEqual([]);
+  });
+
+  it('still cannot see a provider it has no relationship with', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query(`SELECT id FROM providers WHERE id = $1`, [strangerId]));
+    expect(rows).toEqual([]);
+  });
+
+  it('still cannot see any provider\'s credentials', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query(`SELECT id FROM credentials WHERE provider_id = $1`, [engagedId]));
+    expect(rows).toEqual([]);
+  });
+
+  it('still cannot write to a provider row', async () => {
+    await asClaims(db, household(), async (tx) => {
+      const rows = await tx.query(
+        `UPDATE providers SET rate_hourly = 1 WHERE id = $1 RETURNING id`, [engagedId]);
+      expect(rows).toEqual([]);
+    });
+  });
+
+  it('another household sees neither of them', async () => {
+    const rows = await asClaims(
+      db, { ccn_role: 'household', ccn_household_id: otherHouseholdId, ccn_user_id: userId },
+      (tx) => tx.query(`SELECT id FROM providers WHERE id = $1`, [engagedId]));
+    expect(rows).toEqual([]);
   });
 });
