@@ -627,3 +627,44 @@ describe('W8 — the provider states their own bio', () => {
     });
   });
 });
+
+describe('W9 — a provider learns the area and nothing else about the household', () => {
+  let referredCaseId: string;
+  let unrelatedCaseId: string;
+
+  beforeAll(async () => {
+    referredCaseId = (await one<{ case_id: string }>(
+      `SELECT case_id FROM referrals WHERE provider_id = $1 LIMIT 1`, [providerId]))
+      .case_id;
+    unrelatedCaseId = (await one<{ id: string }>(
+      `SELECT id FROM cases WHERE id NOT IN (SELECT case_id FROM referrals WHERE provider_id = $1)
+        LIMIT 1`, [providerId])).id;
+  });
+
+  it('returns the area for a case they were referred to', async () => {
+    const rows = await asClaims(db, provider(), (tx) =>
+      tx.query<{ area: string | null }>(
+        `SELECT case_area_for_provider($1) AS area`, [referredCaseId]));
+    expect(rows[0]!.area).toBeTruthy();
+  });
+
+  it('returns nothing for a case they were not', async () => {
+    const rows = await asClaims(db, provider(), (tx) =>
+      tx.query<{ area: string | null }>(
+        `SELECT case_area_for_provider($1) AS area`, [unrelatedCaseId]));
+    expect(rows[0]!.area).toBeNull();
+  });
+
+  it('still cannot read the household row behind it', async () => {
+    const rows = await asClaims(db, provider(), (tx) =>
+      tx.query(`SELECT id FROM households`));
+    expect(rows).toEqual([]);
+  });
+
+  it('gives a household nothing through it either', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query<{ area: string | null }>(
+        `SELECT case_area_for_provider($1) AS area`, [referredCaseId]));
+    expect(rows[0]!.area).toBeNull();
+  });
+});

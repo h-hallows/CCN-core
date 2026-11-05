@@ -4,7 +4,7 @@
     "type": "git",
     "url": "git+https://github.com/h-hallows/CCN-core.git"
   },
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": false,
   "type": "module",
   "description": "Owns the database: schema, migrations, the credential engine, business-day arithmetic and the copy-lint ruleset. No app, no routes.",
