@@ -2,7 +2,7 @@
 import { check, index, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { userRole } from './enums';
-import { households } from './households';
+import { households, referralPartners } from './households';
 import { providers } from './providers';
 
 /**
@@ -63,6 +63,7 @@ export const portalInvites = pgTable('portal_invites', {
   role: userRole('role').notNull(),
   householdId: uuid('household_id').references(() => households.id),
   providerId: uuid('provider_id').references(() => providers.id),
+  partnerId: uuid('partner_id').references(() => referralPartners.id),
   tokenHash: text('token_hash').notNull(),
   issuedBy: text('issued_by').notNull(),
   issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
@@ -71,8 +72,23 @@ export const portalInvites = pgTable('portal_invites', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 }, (t) => [
   uniqueIndex('portal_invites_token').on(t.tokenHash),
-  check('portal_invites_subject_matches_role', sql`
-    (${t.role} = 'household' AND ${t.householdId} IS NOT NULL AND ${t.providerId} IS NULL) OR
-    (${t.role} = 'provider'  AND ${t.providerId}  IS NOT NULL AND ${t.householdId} IS NULL) OR
-    (${t.role} IN ('operator','partner'))`),
+  // Migration 0012 tightened this: a 'partner' invite used to be allowed to point at
+  // nothing, which made it an invite into an account with no identity behind it.
+  check('portal_invite_names_its_subject', sql`
+    (${t.role} = 'household' AND ${t.householdId} IS NOT NULL AND ${t.providerId} IS NULL AND ${t.partnerId} IS NULL) OR
+    (${t.role} = 'provider'  AND ${t.providerId}  IS NOT NULL AND ${t.householdId} IS NULL AND ${t.partnerId} IS NULL) OR
+    (${t.role} = 'partner'   AND ${t.partnerId}   IS NOT NULL AND ${t.householdId} IS NULL AND ${t.providerId} IS NULL) OR
+    (${t.role} = 'operator'  AND ${t.householdId} IS NULL AND ${t.providerId} IS NULL AND ${t.partnerId} IS NULL)`),
 ]);
+
+/**
+ * Which partner a portal user acts for. Migration 0012, web build spec § 4.3.
+ *
+ * The same shape as householdUsers and providerUsers, and for the same reason: one
+ * organisation can have several people, and a person can leave without the referrals
+ * they sent becoming unattributable.
+ */
+export const partnerUsers = pgTable('partner_users', {
+  userId: uuid('user_id').notNull().references(() => users.id),
+  partnerId: uuid('partner_id').notNull().references(() => referralPartners.id),
+}, (t) => [primaryKey({ columns: [t.userId, t.partnerId] })]);

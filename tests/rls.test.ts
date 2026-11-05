@@ -713,3 +713,170 @@ describe('W9 — a provider reads back what they wrote, and nothing else', () =>
       `DELETE FROM timeline_entries WHERE id = $1`, [noteId]));
   });
 });
+
+/**
+ * Migration 0012 — the partner portal. W11.
+ *
+ * Two things are being asserted. A partner sees the referrals they sent and nobody
+ * else's; and what happened to each is bounded by what the household agreed to share,
+ * because the presence of an outcome tells the partner the family engaged us.
+ */
+describe('W11 — a partner sees their own referrals, within consent', () => {
+  let partnerId: string;
+  let otherPartnerId: string;
+  let partnerUserId: string;
+  let mineUnconverted: string;
+  let mineConverted: string;
+  let theirs: string;
+  let convertedHousehold: string;
+
+  const partner = () => ({
+    ccn_role: 'partner', ccn_user_id: partnerUserId, ccn_partner_id: partnerId,
+  });
+
+  beforeAll(async () => {
+    partnerId = (await one<{ id: string }>(
+      `INSERT INTO referral_partners (name, org, role)
+       VALUES ('A Discharge Planner', 'A Hospital', 'discharge_planner') RETURNING id`)).id;
+    otherPartnerId = (await one<{ id: string }>(
+      `INSERT INTO referral_partners (name, org, role)
+       VALUES ('Another Planner', 'Another Hospital', 'discharge_planner') RETURNING id`)).id;
+
+    partnerUserId = (await one<{ id: string }>(
+      `INSERT INTO users (email, display_name, role)
+       VALUES ('w11-partner@example.com', 'W11 partner', 'partner') RETURNING id`)).id;
+    await db.query(
+      `INSERT INTO partner_users (user_id, partner_id) VALUES ($1,$2)`,
+      [partnerUserId, partnerId]);
+
+    convertedHousehold = (await one<{ id: string }>(
+      `SELECT id FROM households LIMIT 1`)).id;
+
+    mineUnconverted = (await one<{ id: string }>(
+      `INSERT INTO inquiries (name, phone, area, urgency, partner_id, referrer)
+       VALUES ('Family Contact', '310', 'brentwood', 'discharge', $1,
+               '{"patientInitials":"A.B."}'::jsonb)
+       RETURNING id`, [partnerId])).id;
+    mineConverted = (await one<{ id: string }>(
+      `INSERT INTO inquiries (name, phone, area, urgency, partner_id, household_id, referrer)
+       VALUES ('Another Contact', '310', 'bel_air', 'routine', $1, $2,
+               '{"patientInitials":"C.D."}'::jsonb)
+       RETURNING id`, [partnerId, convertedHousehold])).id;
+    theirs = (await one<{ id: string }>(
+      `INSERT INTO inquiries (name, phone, area, urgency, partner_id, referrer)
+       VALUES ('Not Theirs', '310', 'malibu', 'routine', $1,
+               '{"patientInitials":"E.F."}'::jsonb)
+       RETURNING id`, [otherPartnerId])).id;
+  });
+
+  it('cannot read the inquiries table directly', async () => {
+    // The projection exists precisely because a row policy would hand over
+    // household_id, and its presence is the fact the consent gate protects.
+    const rows = await asClaims(db, partner(), (tx) =>
+      tx.query(`SELECT id FROM inquiries`));
+    expect(rows).toEqual([]);
+  });
+
+  it('sees the referrals it sent', async () => {
+    const rows = await asClaims(db, partner(), (tx) =>
+      tx.query<{ inquiry_id: string }>(`SELECT inquiry_id FROM partner_referrals()`));
+    const ids = rows.map((r) => r.inquiry_id);
+    expect(ids).toContain(mineUnconverted);
+    expect(ids).toContain(mineConverted);
+  });
+
+  it('does not see another partner\'s', async () => {
+    const rows = await asClaims(db, partner(), (tx) =>
+      tx.query<{ inquiry_id: string }>(`SELECT inquiry_id FROM partner_referrals()`));
+    expect(rows.map((r) => r.inquiry_id)).not.toContain(theirs);
+  });
+
+  it('gets the patient initials it supplied, never a name', async () => {
+    const rows = await asClaims(db, partner(), (tx) =>
+      tx.query<{ inquiry_id: string; patient_initials: string }>(
+        `SELECT inquiry_id, patient_initials FROM partner_referrals()`));
+    const row = rows.find((r) => r.inquiry_id === mineUnconverted);
+    expect(row!.patient_initials).toBe('A.B.');
+  });
+
+  it('is told nothing about the outcome without consent', async () => {
+    const rows = await asClaims(db, partner(), (tx) =>
+      tx.query<{ inquiry_id: string; outcome: string | null }>(
+        `SELECT inquiry_id, outcome FROM partner_referrals()`));
+    // Converted, but the household has not agreed to share that.
+    expect(rows.find((r) => r.inquiry_id === mineConverted)!.outcome).toBeNull();
+    expect(rows.find((r) => r.inquiry_id === mineUnconverted)!.outcome).toBeNull();
+  });
+
+  it('is told once the household consents', async () => {
+    await db.query(
+      `INSERT INTO consents (subject_type, subject_id, kind, granted_at, granted_by)
+       VALUES ('household', $1, 'partner_outcome', now(), 'operator')`,
+      [convertedHousehold]);
+    const rows = await asClaims(db, partner(), (tx) =>
+      tx.query<{ inquiry_id: string; outcome: string | null }>(
+        `SELECT inquiry_id, outcome FROM partner_referrals()`));
+    expect(rows.find((r) => r.inquiry_id === mineConverted)!.outcome).toBe('care_arranged');
+  });
+
+  it('stops being told the moment consent is revoked', async () => {
+    await db.query(
+      `UPDATE consents SET revoked_at = now()
+        WHERE subject_type = 'household' AND subject_id = $1 AND kind = 'partner_outcome'`,
+      [convertedHousehold]);
+    const rows = await asClaims(db, partner(), (tx) =>
+      tx.query<{ inquiry_id: string; outcome: string | null }>(
+        `SELECT inquiry_id, outcome FROM partner_referrals()`));
+    expect(rows.find((r) => r.inquiry_id === mineConverted)!.outcome).toBeNull();
+  });
+
+  it('gives a household nothing through the same function', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query(`SELECT inquiry_id FROM partner_referrals()`));
+    expect(rows).toEqual([]);
+  });
+
+  it('may still hand in a referral, which is the part needing no account', async () => {
+    const before = await one<{ n: string }>(`SELECT count(*)::text AS n FROM inquiries`);
+    // No RETURNING. Under row-level security, INSERT ... RETURNING also needs a SELECT
+    // policy matching the new row, and a partner deliberately has none on `inquiries`
+    // — they read through partner_referrals() instead. The application never hits
+    // this: /api/refer runs on the operator connection, like the other intake routes.
+    await asClaims(db, { ccn_role: 'partner' }, (tx) => tx.query(
+      `INSERT INTO inquiries (name, phone, area, urgency)
+       VALUES ('Walk-in Referral', '310', 'westwood', 'discharge')`));
+    const after = await one<{ n: string }>(`SELECT count(*)::text AS n FROM inquiries`);
+    expect(Number(after.n)).toBe(Number(before.n) + 1);
+  });
+
+  it('an invite for a partner must name one', async () => {
+    await expectDenied(() => db.query(
+      `INSERT INTO portal_invites (email, role, token_hash, issued_by, expires_at)
+       VALUES ('x@example.com', 'partner', 'hash-w11', 'operator', now() + interval '1 day')`));
+  });
+});
+
+describe('W11 — nothing in the schema could hold a referral payment', () => {
+  it('has no column that reads as compensation, anywhere', async () => {
+    // § 1812.531 forbids a nurses' registry dividing fees with a physician, surgeon,
+    // nurse, hospital, patient or their agents — which covers most of the people the
+    // partner portal is for. Spec § 0.1: "no schema column that could hold one". A
+    // column that exists gets filled in, so the assertion is that it does not.
+    const rows = await db.query<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name
+         FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND (column_name ~* 'commission|compensat|bonus|reward|payout|kickback|incentive|finder'
+               OR column_name ~* 'referral_fee|partner_fee|split')`);
+    expect(rows.map((r) => `${r.table_name}.${r.column_name}`)).toEqual([]);
+  });
+
+  it('keeps the referral partner record to contact details and nothing else', async () => {
+    const rows = await db.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'referral_partners'
+        ORDER BY column_name`);
+    expect(rows.map((r) => r.column_name).sort()).toEqual(
+      ['created_at', 'email', 'id', 'name', 'notes', 'org', 'phone', 'role']);
+  });
+});
