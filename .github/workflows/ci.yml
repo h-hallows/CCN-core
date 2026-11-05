@@ -14,7 +14,9 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm install --no-audit --no-fund
+      # ci, not install: this repository is the one two others pin by tag, so its own
+      # build must resolve to exactly what the lockfile says.
+      - run: npm ci
 
       - name: Typecheck
         run: npm run typecheck
