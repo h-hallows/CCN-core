@@ -24,6 +24,11 @@ export const providers = pgTable('providers', {
   availability: text('availability').array().notNull().default(sql`'{}'`),
   /** (b)(2): provider-stated restrictions. */
   restrictions: text('restrictions'),
+  /**
+   * The provider's own words about themselves, shown to households verbatim. Distinct
+   * from `notes`, which is the operator's record and which a provider may not change.
+   */
+  bio: text('bio'),
   specialties: text('specialties').array().notNull().default(sql`'{}'`),
   languages: text('languages').array().notNull().default(sql`'{}'`),
   notes: text('notes'),

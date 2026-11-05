@@ -600,3 +600,30 @@ describe('W8 — a provider cannot verify themselves', () => {
     for (const r of rows) expect(r.provider_id).toBe(selfId);
   });
 });
+
+describe('W8 — the provider states their own bio', () => {
+  it('a provider may write it, because the guard does not forbid it', async () => {
+    await asClaims(db, provider(), (tx) => tx.query(
+      `UPDATE providers SET bio = $2 WHERE id = $1`,
+      [providerId, 'Twelve years on post-surgical recovery, mostly orthopaedic.']));
+    const [row] = await db.query<{ bio: string }>(
+      `SELECT bio FROM providers WHERE id = $1`, [providerId]);
+    expect(row!.bio).toContain('post-surgical');
+  });
+
+  it('a provider still may not write the operator\'s notes about them', async () => {
+    await expectDenied(() => asClaims(db, provider(), (tx) =>
+      tx.query(`UPDATE providers SET notes = 'say something nice' WHERE id = $1`,
+        [providerId])));
+  });
+
+  it('nobody else may write it', async () => {
+    const other = await one<{ id: string }>(
+      `SELECT id FROM providers WHERE id <> $1 LIMIT 1`, [providerId]);
+    await asClaims(db, provider(), async (tx) => {
+      const rows = await tx.query(
+        `UPDATE providers SET bio = 'not mine' WHERE id = $1 RETURNING id`, [other.id]);
+      expect(rows).toEqual([]);
+    });
+  });
+});
