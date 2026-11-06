@@ -135,3 +135,60 @@ describe('§ 5 re-verification queue', () => {
     expect(needsReverification(offset(-180), TODAY)).toBe(false);
   });
 });
+
+describe('a revoked credential proves nothing', () => {
+  const rn = { type: 'RN', transports: false, status: 'active' } as const;
+  const today = new Date('2026-11-05T12:00:00Z');
+  const live = (type: string, expiresOn: string | null = '2027-01-01') =>
+    ({ type, expiresOn } as never);
+
+  it('does not count a soft-deleted row towards a requirement', () => {
+    // credentials is soft-delete and its uniqueness index is partial over
+    // deleted_at IS NULL, so holding a revoked Live Scan and no live one is a normal
+    // state. Counting the revoked one is the 0008 bug a layer up.
+    const withRevoked = [
+      live('rn_license'), live('tb_clearance'), live('cpr_bls'),
+      { type: 'live_scan', expiresOn: null, deletedAt: '2026-01-01' },
+    ] as never[];
+    const e = eligibility(rn, withRevoked, today);
+    expect(e.eligible).toBe(false);
+    expect(e.missing).toContain('live_scan');
+  });
+
+  it('counts it once it is live again', () => {
+    const e = eligibility(rn, [
+      live('rn_license'), live('tb_clearance'), live('cpr_bls'), live('live_scan', null),
+    ] as never[], today);
+    expect(e.eligible).toBe(true);
+    expect(e.missing).toEqual([]);
+  });
+
+  it('reports a stale verification without blocking on it', () => {
+    // Deliberate: I12 blocks on missing or expired, and a stale re-check is neither.
+    // Making it blocking would take providers off every shortlist the day their
+    // re-verification fell due, which is a decision for the operator and counsel.
+    const e = eligibility(rn, [
+      { type: 'rn_license', expiresOn: null, verifiedOn: '2016-01-01' },
+      live('tb_clearance'), live('cpr_bls'), live('live_scan', null),
+    ] as never[], today);
+    expect(e.eligible).toBe(true);
+    expect(e.stale).toContain('rn_license');
+  });
+
+  it('says nothing is stale when everything was checked recently', () => {
+    const e = eligibility(rn, [
+      { type: 'rn_license', expiresOn: null, verifiedOn: '2026-10-01' },
+      live('tb_clearance'), live('cpr_bls'), live('live_scan', null),
+    ] as never[], today);
+    expect(e.stale).toEqual([]);
+  });
+
+  it('worstRequiredStatus ignores revoked rows too', () => {
+    const worst = worstRequiredStatus(rn, [
+      live('rn_license'), live('tb_clearance'), live('cpr_bls'),
+      { type: 'live_scan', expiresOn: null, deletedAt: '2026-01-01' },
+    ] as never[], today);
+    // The Live Scan is effectively missing, which ranks as expired.
+    expect(worst).toBe('expired');
+  });
+});

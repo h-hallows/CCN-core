@@ -15,6 +15,7 @@ let householdId: string;
 let otherHouseholdId: string;
 let caseId: string;
 let providerId: string;
+let providerUserId: string;
 let userId: string;
 let shortlistId: string;
 let disclosureId: string;
@@ -39,6 +40,13 @@ beforeAll(async () => {
     `SELECT id FROM households WHERE id <> $1 LIMIT 1`, [householdId])).id;
   providerId = (await one<{ id: string }>(
     `SELECT id FROM providers WHERE full_name = 'Imelda Santoyo'`)).id;
+  providerUserId = (await one<{ id: string }>(
+    `INSERT INTO users (email, display_name, role)
+     VALUES ('rls-provider@example.com', 'RLS provider', 'provider')
+     ON CONFLICT (email) DO UPDATE SET role = 'provider' RETURNING id`)).id;
+  await db.query(
+    `INSERT INTO provider_users (user_id, provider_id) VALUES ($1,$2)
+     ON CONFLICT DO NOTHING`, [providerUserId, providerId]);
   disclosureId = (await one<{ id: string }>(`SELECT id FROM disclosures LIMIT 1`)).id;
   timelineId = (await one<{ id: string }>(`SELECT id FROM timeline_entries LIMIT 1`)).id;
 
@@ -58,7 +66,17 @@ beforeAll(async () => {
 });
 
 const household = () => ({ ccn_role: 'household', ccn_household_id: householdId, ccn_user_id: userId });
-const provider = () => ({ ccn_role: 'provider', ccn_provider_id: providerId });
+/*
+ * A provider claim now has to name a user who is actually linked to that provider.
+ * Migration 0014 cross-checks the claims against the membership tables, so a claim
+ * asserting a provider id with no `provider_users` row resolves to NULL — which is
+ * the point: the four claims used to be independent assertions nobody checked. The
+ * applications have always built them from these rows, so this fixture is what
+ * production looks like; it simply was not what the test looked like.
+ */
+const provider = () => ({
+  ccn_role: 'provider', ccn_user_id: providerUserId, ccn_provider_id: providerId,
+});
 
 describe('§ 10 — a household request is not a referral', () => {
   it('household role: INSERT INTO referrals is denied', async () => {
@@ -878,5 +896,164 @@ describe('W11 — nothing in the schema could hold a referral payment', () => {
         ORDER BY column_name`);
     expect(rows.map((r) => r.column_name).sort()).toEqual(
       ['created_at', 'email', 'id', 'name', 'notes', 'org', 'phone', 'role']);
+  });
+});
+
+/**
+ * Migration 0014 — the rest of the write-to-read pattern, and three records that
+ * said they were permanent and were not.
+ */
+describe('0014 — a partner may hand us a referral and nothing else', () => {
+  let partnerId: string;
+  let otherPartnerId: string;
+  let partnerUserId: string;
+  const partner = () => ({
+    ccn_role: 'partner', ccn_user_id: partnerUserId, ccn_partner_id: partnerId,
+  });
+
+  beforeAll(async () => {
+    partnerId = (await one<{ id: string }>(
+      `INSERT INTO referral_partners (name) VALUES ('0014 Partner') RETURNING id`)).id;
+    otherPartnerId = (await one<{ id: string }>(
+      `INSERT INTO referral_partners (name) VALUES ('0014 Other') RETURNING id`)).id;
+    partnerUserId = (await one<{ id: string }>(
+      `INSERT INTO users (email, display_name, role)
+       VALUES ('0014-partner@example.com', '0014 partner', 'partner') RETURNING id`)).id;
+    await db.query(`INSERT INTO partner_users (user_id, partner_id) VALUES ($1,$2)`,
+      [partnerUserId, partnerId]);
+  });
+
+  it('may still send one with no attribution at all — the no-account path', async () => {
+    await asClaims(db, { ccn_role: 'partner' }, (tx) => tx.query(
+      `INSERT INTO inquiries (name, phone, area, urgency)
+       VALUES ('0014 walk-in', '310', 'westwood', 'routine')`));
+  });
+
+  it('cannot aim a referral at a household, which was a consent oracle', async () => {
+    // partner_referrals() answers "did this household consent to sharing the outcome".
+    // Scoped by inquiries.partner_id, which the partner writes — so a forged row with
+    // somebody else's household_id turned that into a question anyone could ask.
+    const household = await one<{ id: string }>(`SELECT id FROM households LIMIT 1`);
+    await expectDenied(() => asClaims(db, partner(), (tx) => tx.query(
+      `INSERT INTO inquiries (name, partner_id, household_id)
+       VALUES ('forged', $1, $2)`, [partnerId, household.id])));
+  });
+
+  it('cannot attribute a referral to a different partner', async () => {
+    await expectDenied(() => asClaims(db, partner(), (tx) => tx.query(
+      `INSERT INTO inquiries (name, partner_id) VALUES ('misattributed', $1)`,
+      [otherPartnerId])));
+  });
+
+  it('cannot pre-mark a referral handled, hiding it from the operator queue', async () => {
+    await expectDenied(() => asClaims(db, partner(), (tx) => tx.query(
+      `INSERT INTO inquiries (name, partner_id, handled_at, handled_by)
+       VALUES ('prehandled', $1, now(), 'nobody')`, [partnerId])));
+  });
+
+  it('cannot forge a compliance alert in the operator\'s queue', async () => {
+    await expectDenied(() => asClaims(db, partner(), (tx) => tx.query(
+      `INSERT INTO operator_notifications (kind, subject, body)
+       VALUES ('credential_expiring', 'All clear', 'Nothing outstanding')`)));
+    await expectDenied(() => asClaims(db, partner(), (tx) => tx.query(
+      `INSERT INTO operator_notifications (kind, subject, body, delivered_at, read_at)
+       VALUES ('partner_referral', 'x', 'y', now(), now())`)));
+  });
+
+  it('may still cause the one notification it is meant to', async () => {
+    await asClaims(db, partner(), (tx) => tx.query(
+      `INSERT INTO operator_notifications (kind, subject, body)
+       VALUES ('partner_referral', 'A referral arrived', 'Open the console.')`));
+  });
+});
+
+describe('0014 — records that said they were permanent now are', () => {
+  it('revoking a consent takes the testimonial down', async () => {
+    const household = await one<{ id: string }>(`SELECT id FROM households LIMIT 1`);
+    const consent = await one<{ id: string }>(
+      `INSERT INTO consents (subject_type, subject_id, kind, granted_at, granted_by)
+       VALUES ('household', $1, 'testimonial', now(), 'operator') RETURNING id`,
+      [household.id]);
+    const t = await one<{ id: string }>(
+      `INSERT INTO testimonials (household_id, consent_id, body, attribution, published)
+       VALUES ($1, $2, 'They were wonderful.', 'J.T., Brentwood', true) RETURNING id`,
+      [household.id, consent.id]);
+
+    await db.query(`UPDATE consents SET revoked_at = now() WHERE id = $1`, [consent.id]);
+
+    const after = await one<{ published: boolean }>(
+      `SELECT published FROM testimonials WHERE id = $1`, [t.id]);
+    // Was: still true. Publication outlived the consent it rested on.
+    expect(after.published).toBe(false);
+  });
+
+  it('a fee schedule cannot be backdated into its own notice period', async () => {
+    await expectDenied(() => db.query(
+      `INSERT INTO fee_schedules (version, max_fee_pct, payment_terms, body,
+                                  posted_at, effective_from)
+       VALUES (8001, 15, 'Net 15', 'backdated',
+               now() + interval '2 days', current_date + 30)`));
+  });
+
+  it('a posted fee schedule cannot be rewritten under the nurse it was given to', async () => {
+    const s = await one<{ id: string }>(
+      `INSERT INTO fee_schedules (version, max_fee_pct, payment_terms, body,
+                                  posted_at, effective_from)
+       VALUES (8002, 15, 'Net 15', 'original', now(), current_date + 10) RETURNING id`);
+    await expectDenied(() => db.query(
+      `UPDATE fee_schedules SET max_fee_pct = 40, body = 'rewritten' WHERE id = $1`,
+      [s.id]));
+    await expectDenied(() => db.query(`DELETE FROM fee_schedules WHERE id = $1`, [s.id]));
+  });
+
+  it('feedback cannot be revised or deleted by anyone', async () => {
+    const referral = await one<{ id: string }>(`SELECT id FROM referrals LIMIT 1`);
+    const f = await one<{ id: string }>(
+      `INSERT INTO referral_feedback (referral_id, referral_service_rating, notes)
+       VALUES ($1, 2, 'as said at the time') RETURNING id`, [referral.id]);
+    await expectDenied(() => db.query(
+      `UPDATE referral_feedback SET referral_service_rating = 5 WHERE id = $1`, [f.id]));
+    await expectDenied(() => db.query(
+      `DELETE FROM referral_feedback WHERE id = $1`, [f.id]));
+  });
+
+  it('and only one answer per referral', async () => {
+    const referral = await one<{ id: string }>(
+      `SELECT referral_id FROM referral_feedback LIMIT 1`)
+      .then((r) => ({ id: (r as unknown as { referral_id: string }).referral_id }));
+    await expectDenied(() => db.query(
+      `INSERT INTO referral_feedback (referral_id, referral_service_rating)
+       VALUES ($1, 5)`, [referral.id]));
+  });
+});
+
+describe('0014 — a claim is only as good as the membership behind it', () => {
+  it('a household claim naming a household the user does not belong to resolves to nothing', async () => {
+    const orphan = await one<{ id: string }>(
+      `INSERT INTO users (email, display_name, role)
+       VALUES ('0014-orphan@example.com', 'Orphan', 'household') RETURNING id`);
+    const other = await one<{ id: string }>(`SELECT id FROM households LIMIT 1`);
+
+    const rows = await asClaims(
+      db,
+      { ccn_role: 'household', ccn_household_id: other.id, ccn_user_id: orphan.id },
+      (tx) => tx.query<{ h: string | null }>(`SELECT current_household()::text AS h`));
+    expect(rows[0]!.h).toBeNull();
+  });
+
+  it('and so it reaches none of that household\'s data', async () => {
+    const orphan = await one<{ id: string }>(
+      `SELECT id FROM users WHERE email = '0014-orphan@example.com'`);
+    const rows = await asClaims(
+      db,
+      { ccn_role: 'household', ccn_household_id: householdId, ccn_user_id: orphan.id },
+      (tx) => tx.query(`SELECT id FROM cases`));
+    expect(rows).toEqual([]);
+  });
+
+  it('a real member still resolves', async () => {
+    const rows = await asClaims(db, household(), (tx) =>
+      tx.query<{ h: string | null }>(`SELECT current_household()::text AS h`));
+    expect(rows[0]!.h).toBe(householdId);
   });
 });

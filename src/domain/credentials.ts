@@ -57,8 +57,25 @@ export const LABEL: Record<CredentialType, string> = {
   other: 'Other',
 };
 
-/** Only the fields eligibility actually reads, so tests need not build whole rows. */
-export type CredentialLike = { type: CredentialType; expiresOn: string | null };
+/**
+ * Only the fields eligibility actually reads, so tests need not build whole rows.
+ *
+ * `deletedAt` is here because leaving it out was a hole of the same shape as the 0008
+ * one, a layer up. `credentials` is soft-delete and `credentials_one_live_per_type` is
+ * a PARTIAL index over `deleted_at IS NULL`, so a provider can legitimately hold a
+ * revoked Live Scan and no live one. With the field absent from the type, nothing
+ * discouraged a caller from passing every row — and the revoked clearance then counted
+ * as satisfying the requirement. The filter that makes presence meaningful belongs
+ * here, once, not in each caller.
+ */
+export type CredentialLike = {
+  type: CredentialType;
+  expiresOn: string | null;
+  /** Set when the credential has been revoked. A revoked row proves nothing. */
+  deletedAt?: string | null;
+  /** When it was last checked against the issuing body. Drives `stale`, not blocking. */
+  verifiedOn?: string | null;
+};
 export type ProviderLike = Pick<Provider, 'type' | 'transports' | 'status'>;
 
 export interface Eligibility {
@@ -66,6 +83,17 @@ export interface Eligibility {
   missing: CredentialType[];
   expired: CredentialType[];
   blocking: CredentialType[];
+  /**
+   * Required credentials whose last verification is older than REVERIFY_AFTER_DAYS.
+   *
+   * REPORTED, NOT BLOCKING, and that is a deliberate line rather than an oversight.
+   * I12 blocks on "missing or expired"; a stale verification is neither, and making
+   * it blocking would silently take providers off every shortlist the day their
+   * re-check fell due — a product and diligence decision for the operator and counsel,
+   * not one to slip into a function. A licence marked non-expiring and last verified
+   * years ago is eligible today, which is worth knowing; this is how you know.
+   */
+  stale: CredentialType[];
   reason: string | null;
 }
 
@@ -75,18 +103,26 @@ export function eligibility(
   today: Date,
 ): Eligibility {
   const required = requiredFor(p);
-  const present = new Set(creds.map((c) => c.type));
+  // A revoked credential proves nothing, whatever the caller passed in.
+  const live = creds.filter((c) => !c.deletedAt);
+  const present = new Set(live.map((c) => c.type));
   const missing = required.filter((t) => !present.has(t));
-  const expired = creds
+  const expired = live
     .filter((c) => required.includes(c.type) && credStatus(c.expiresOn, today) === 'expired')
     .map((c) => c.type);
   const blocking = [...new Set([...missing, ...expired])];
+  const stale = live
+    .filter((c) => required.includes(c.type)
+      && c.verifiedOn != null
+      && needsReverification(c.verifiedOn, today))
+    .map((c) => c.type);
 
   return {
     eligible: p.status === 'active' && blocking.length === 0,
     missing,
     expired,
     blocking,
+    stale,
     reason:
       p.status === 'inactive' ? 'Marked inactive'
       : p.status === 'do_not_refer' ? 'Marked do not refer'
@@ -103,7 +139,8 @@ export function worstRequiredStatus(
   today: Date,
 ): CredStatus {
   const required = requiredFor(p);
-  const present = new Map(creds.map((c) => [c.type, c] as const));
+  const present = new Map(
+    creds.filter((c) => !c.deletedAt).map((c) => [c.type, c] as const));
   let worst: CredStatus = 'valid';
   for (const t of required) {
     const c = present.get(t);
