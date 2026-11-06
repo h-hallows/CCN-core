@@ -461,6 +461,54 @@ describe('what a provider may hand in', () => {
     expect(row.bytes).not.toBeNull();
   });
 
+  it('cannot attach somebody else\'s document to their own submission', async () => {
+    /*
+     * The submission is written by the provider and read by the operator's review screen
+     * as "this is the paper for this submission". An unconstrained `document_id` would
+     * make that read authoritative about a row the provider chose freely — the same
+     * write-to-read pattern 0008, 0013 and 0014 each closed, arriving through a column
+     * added later and therefore unconstrained by default.
+     */
+    const otherProvider = await one<{ id: string }>(
+      `SELECT id FROM providers WHERE id <> $1 ORDER BY id LIMIT 1`, [providerId]);
+    const theirs = await file({ kind: 'credential', provider_id: otherProvider.id });
+
+    await expectDenied(() => asClaims(db, provider(), (tx) => tx.query(
+      `INSERT INTO credential_submissions (provider_id, type, document_id)
+       VALUES ($1, 'tb_clearance', $2)`,
+      [providerId, theirs])));
+
+    // Their own, filed the same way, goes through — so the refusal above is the
+    // ownership check and not the column being rejected outright.
+    const mine = await file({ kind: 'credential', provider_id: providerId });
+    await asClaims(db, provider(), (tx) => tx.query(
+      `INSERT INTO credential_submissions (provider_id, type, document_id)
+       VALUES ($1, 'tb_clearance', $2)`,
+      [providerId, mine]));
+    const [row] = await db.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM credential_submissions WHERE document_id = $1`,
+      [mine]);
+    expect(Number(row!.n)).toBe(1);
+  });
+
+  it('cannot attach a redacted document, or one that is not a credential', async () => {
+    const notCredential = await file({ kind: 'other', provider_id: providerId });
+    await expectDenied(() => asClaims(db, provider(), (tx) => tx.query(
+      `INSERT INTO credential_submissions (provider_id, type, document_id)
+       VALUES ($1, 'tb_clearance', $2)`,
+      [providerId, notCredential])));
+
+    const gone = await file({ kind: 'credential', provider_id: providerId });
+    await db.query(
+      `UPDATE documents SET redacted_at = now(), redacted_by = 'operator',
+                            redaction_reason = 'wrong file', bytes = NULL
+        WHERE id = $1`, [gone]);
+    await expectDenied(() => asClaims(db, provider(), (tx) => tx.query(
+      `INSERT INTO credential_submissions (provider_id, type, document_id)
+       VALUES ($1, 'tb_clearance', $2)`,
+      [providerId, gone])));
+  });
+
   it('a household cannot file anything at all', async () => {
     const body = Buffer.from('from the family');
     await expectDenied(() => asClaims(db, household(), (tx) => tx.query(
