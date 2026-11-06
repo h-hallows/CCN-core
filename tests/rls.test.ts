@@ -8,7 +8,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { DbHandle } from '../src/db/client';
-import { asClaims, expectDenied, seededDb } from '../src/testing/db';
+import { asClaims, expectDenied, expectRejection, seededDb } from '../src/testing/db';
 
 let db: DbHandle;
 let householdId: string;
@@ -110,6 +110,14 @@ describe('§ 10 — a household request is not a referral', () => {
   });
 
   it('and that request creates no referral', async () => {
+    // 0019 allows one OPEN request per provider per bench, so the one the previous
+    // test made is answered first — which is also the real sequence: a family asks
+    // again after the operator has closed the last one.
+    await db.query(
+      `UPDATE shortlist_requests SET status = 'withdrawn', resolved_at = now()
+        WHERE shortlist_id = $1 AND provider_id = $2 AND status = 'pending'`,
+      [shortlistId, providerId]);
+
     const before = await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM referrals`);
     await asClaims(db, household(), (tx) =>
       tx.query(
@@ -124,6 +132,69 @@ describe('§ 10 — a household request is not a referral', () => {
       tx.query(
         `INSERT INTO shortlist_requests (shortlist_id, provider_id, requested_by, status)
          VALUES ($1, $2, $3, 'referred')`, [shortlistId, providerId, userId])));
+  });
+
+  it('cannot ask twice about the same person while the first is unanswered', async () => {
+    /*
+     * 0019. `lib/request.ts` reads for an existing pending row and answers "you have
+     * already asked us", which is check-then-write: nothing stops a second insert
+     * between the read and the write, and a double-tap on a phone does it. The queue
+     * then shows the same family asking about the same nurse twice, which reads as two
+     * people wanting two different things.
+     */
+    await db.query(
+      `UPDATE shortlist_requests SET status = 'withdrawn', resolved_at = now()
+        WHERE shortlist_id = $1 AND provider_id = $2 AND status = 'pending'`,
+      [shortlistId, providerId]);
+
+    await asClaims(db, household(), (tx) => tx.query(
+      `INSERT INTO shortlist_requests (shortlist_id, provider_id, requested_by)
+       VALUES ($1, $2, $3)`, [shortlistId, providerId, userId]));
+
+    await expectRejection(
+      () => asClaims(db, household(), (tx) => tx.query(
+        `INSERT INTO shortlist_requests (shortlist_id, provider_id, requested_by)
+         VALUES ($1, $2, $3)`, [shortlistId, providerId, userId])),
+      /shortlist_requests_one_open_per_provider|duplicate key/i,
+    );
+  });
+
+  it('one case shows one live bench, whatever the application does', async () => {
+    /*
+     * 0019. `publishBench` withdraws the live bench and inserts the new one in a
+     * transaction, but the UPDATE can only lock rows that exist — nothing stops a
+     * concurrent INSERT. Two live benches render on the family's own screen as two
+     * short lists with nothing to say which is current, and somebody asks about a
+     * provider the operator deliberately took away.
+     *
+     * A case of its own, because withdrawing this file's shared fixture bench would
+     * change what every test after this one sees.
+     */
+    const [kase] = await db.query<{ id: string }>(
+      `SELECT c.id FROM cases c
+        WHERE c.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM published_shortlists p WHERE p.case_id = c.id)
+        ORDER BY c.id LIMIT 1`);
+    expect(kase).toBeTruthy();
+
+    await db.query(
+      `INSERT INTO published_shortlists (case_id, published_by) VALUES ($1, 'operator')`,
+      [kase!.id]);
+
+    await expectRejection(
+      () => db.query(
+        `INSERT INTO published_shortlists (case_id, published_by) VALUES ($1, 'operator')`,
+        [kase!.id]),
+      /published_shortlists_one_live_per_case|duplicate key/i,
+    );
+
+    // Withdrawn benches are ordinary history and do not collide.
+    await db.query(
+      `UPDATE published_shortlists SET withdrawn_at = now() WHERE case_id = $1`,
+      [kase!.id]);
+    await db.query(
+      `INSERT INTO published_shortlists (case_id, published_by) VALUES ($1, 'operator')`,
+      [kase!.id]);
   });
 });
 

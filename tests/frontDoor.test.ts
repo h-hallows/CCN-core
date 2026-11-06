@@ -55,6 +55,13 @@ describe('§ 3.1 a request is a request, not a referral', () => {
   });
 
   it('creates no referral as a side effect — the whole point of the rule', async () => {
+    // 0019 allows one OPEN request per provider per bench. The previous test left one
+    // pending; answering it first is also the real sequence.
+    await db.query(
+      `UPDATE shortlist_requests SET status = 'withdrawn', resolved_at = now()
+        WHERE shortlist_id = $1 AND provider_id = $2 AND status = 'pending'`,
+      [shortlistId, providerId],
+    );
     const before = await db.query<{ n: string }>(`SELECT count(*) AS n FROM referrals`);
     await db.query(
       `INSERT INTO shortlist_requests (shortlist_id, provider_id, requested_by)
