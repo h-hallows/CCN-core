@@ -72,3 +72,16 @@ export const shortlistRequestStatus = pgEnum('shortlist_request_status', [
 export const credentialSubmissionState = pgEnum('credential_submission_state', [
   'submitted', 'accepted', 'rejected',
 ]);
+
+/**
+ * Migration 0015. What a document is, so a file list can be read without opening
+ * anything — and so the § 1812.5095 paperwork can be found by what it is rather than by
+ * what somebody happened to call the file.
+ */
+export const documentKind = pgEnum('document_kind', [
+  'credential', 'registry_agreement', 'written_notice', 'written_statement',
+  'nurse_disclosure', 'correspondence', 'other',
+]);
+
+/** One value today. Here so an external backend can be added without a rewrite. */
+export const documentStorage = pgEnum('document_storage', ['postgres']);

@@ -431,12 +431,27 @@ describe('W7 — a household can still name the person in its house', () => {
   beforeAll(async () => {
     engagedId = (await one<{ id: string }>(
       `SELECT id FROM providers WHERE full_name = 'Grace Okonkwo'`)).id;
+    /*
+     * A provider created here, rather than one picked out of the seed.
+     *
+     * This used to be an unordered `LIMIT 1` over providers absent from `referrals`,
+     * `published_shortlist_items` and `shortlist_requests` — three of the five branches
+     * of `provider_engaged_with_household`. It missed the other two, so whenever the
+     * heap happened to hand back a provider named as one of this household's case
+     * primaries or alternates, the "stranger" was legitimately visible and the suite
+     * went red for the right reason about the wrong row.
+     *
+     * Mirroring all five branches here would make the fixture a copy of the policy it
+     * is testing, and it would quietly stop being a stranger the next time the policy
+     * gains a branch. A provider inserted now has no relationship to anything, and
+     * cannot acquire one by someone editing a function.
+     */
     strangerId = (await one<{ id: string }>(
-      `SELECT p.id FROM providers p
-        WHERE p.id NOT IN (SELECT provider_id FROM referrals)
-          AND p.id NOT IN (SELECT provider_id FROM published_shortlist_items)
-          AND p.id NOT IN (SELECT provider_id FROM shortlist_requests)
-        LIMIT 1`)).id;
+      `INSERT INTO providers (full_name, type, status, transports, areas, availability,
+                              specialties, languages)
+       VALUES ('Stranger, No Relationship', 'CNA', 'active', false,
+               ARRAY['Pasadena'], ARRAY['AM'], ARRAY[]::text[], ARRAY['English'])
+       RETURNING id`)).id;
 
     // Referred to this household's case, then the bench taken down — the ordinary
     // sequence, and the one that used to make the provider invisible.
@@ -1007,7 +1022,19 @@ describe('0014 — records that said they were permanent now are', () => {
   });
 
   it('feedback cannot be revised or deleted by anyone', async () => {
-    const referral = await one<{ id: string }>(`SELECT id FROM referrals LIMIT 1`);
+    /*
+     * A referral that has no feedback yet, chosen deterministically.
+     *
+     * This was `SELECT id FROM referrals LIMIT 1`, which is whatever Postgres hands back
+     * from the heap. An earlier test in this file leaves feedback on a referral, so
+     * whenever the unordered read happened to return that one, this test collided with
+     * `referral_feedback_one_per_referral` and the suite went red for no reason. An
+     * intermittently failing test teaches you to re-run rather than to read.
+     */
+    const referral = await one<{ id: string }>(
+      `SELECT r.id FROM referrals r
+        WHERE NOT EXISTS (SELECT 1 FROM referral_feedback f WHERE f.referral_id = r.id)
+        ORDER BY r.id LIMIT 1`);
     const f = await one<{ id: string }>(
       `INSERT INTO referral_feedback (referral_id, referral_service_rating, notes)
        VALUES ($1, 2, 'as said at the time') RETURNING id`, [referral.id]);
@@ -1019,8 +1046,7 @@ describe('0014 — records that said they were permanent now are', () => {
 
   it('and only one answer per referral', async () => {
     const referral = await one<{ id: string }>(
-      `SELECT referral_id FROM referral_feedback LIMIT 1`)
-      .then((r) => ({ id: (r as unknown as { referral_id: string }).referral_id }));
+      `SELECT referral_id AS id FROM referral_feedback ORDER BY referral_id LIMIT 1`);
     await expectDenied(() => db.query(
       `INSERT INTO referral_feedback (referral_id, referral_service_rating)
        VALUES ($1, 5)`, [referral.id]));

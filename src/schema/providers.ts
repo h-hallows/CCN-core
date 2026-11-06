@@ -56,7 +56,10 @@ export const credentials = pgTable('credentials', {
   verifiedOn: date('verified_on').notNull(),
   verifiedBy: text('verified_by').notNull(),
   verificationSource: text('verification_source').notNull(),
+  /** Deprecated by documentId. A URL rots, and can be edited after the check. */
   documentUrl: text('document_url'),
+  /** Migration 0015: the paper itself, held by the registry rather than linked to. */
+  documentId: uuid('document_id'),
   notes: text('notes'),
   /**
    * § 1812.528 — the licence physically inspected, with its expiry noted. A different
@@ -110,7 +113,10 @@ export const credentialSubmissions = pgTable('credential_submissions', {
   type: credentialType('type').notNull(),
   /** The provider's own reference. Believed by nobody until the operator checks it. */
   identifier: text('identifier'),
+  /** Deprecated by documentId, same reasoning as on `credentials`. */
   documentUrl: text('document_url'),
+  /** Migration 0015: what they actually handed in. */
+  documentId: uuid('document_id'),
   note: text('note'),
   submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
   state: credentialSubmissionState('state').notNull().default('submitted'),

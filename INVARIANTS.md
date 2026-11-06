@@ -92,6 +92,32 @@ Two of those terms are about licensure rather than employment:
 - **the bond and licence terms** are barred from advertising outright by
   § 1812.5095(i)–(j).
 
+## I14 — a document is evidence
+
+Migration 0015. The § 1812.5095 file has to be able to produce what it refers to: a
+provider's signed agreement, the paper a credential was verified against, the written
+statement a household was sent. Three rules hold that together, and all three are in the
+database rather than in the application:
+
+1. **The row cannot lie about the bytes.** `sha256_hex` and `byte_size` are checked
+   against the bytes themselves by a CHECK constraint, so the digest can be quoted as
+   evidence rather than as something an application asserted.
+2. **Append-only.** No UPDATE, no DELETE. If a document is wrong, the right answer is to
+   file the correct one and keep both, because "what was on file in March" is a question
+   someone may ask years later.
+3. **One exception, and it is deliberate.** Redaction drops the bytes and keeps the row,
+   the digest, who filed it and why it went. It exists because append-only has a worse
+   failure mode than losing history: file one household's paperwork against another and
+   you cannot un-leak it.
+
+`visible_to_subject` defaults to false and the subject may never set it. It governs what
+the registry shares back, so letting the uploader choose it would make the subject the
+author of their own permissions — and I12 keeps the diligence record away from both the
+household and the provider.
+
+Retention is unbounded on purpose. COUNSEL.md question 4 is open, and deleting evidence
+is the irreversible mistake.
+
 ## Rules for contributors
 
 1. Read this file before opening a PR. The PR template asks you to confirm each invariant.

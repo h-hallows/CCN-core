@@ -14,12 +14,14 @@ export * from './intake';
 export * from './audit';
 export * from './nurses';
 export * from './intakeSupport';
+export * from './documents';
 
 import { providers, credentials } from './providers';
+import { documents } from './documents';
 import { households, cases } from './households';
 import { timelineEntries, disclosures, referrals } from './compliance';
 import {
-  careType, caseStatus, credentialType, endReason, providerType, urgency,
+  careType, caseStatus, credentialType, documentKind, endReason, providerType, urgency,
 } from './enums';
 
 // --- inferred types ---------------------------------------------------------
@@ -37,3 +39,5 @@ export type CareType = (typeof careType.enumValues)[number];
 export type CaseStatusValue = (typeof caseStatus.enumValues)[number];
 export type UrgencyValue = (typeof urgency.enumValues)[number];
 export type EndReasonValue = (typeof endReason.enumValues)[number];
+export type Document = typeof documents.$inferSelect;
+export type DocumentKind = (typeof documentKind.enumValues)[number];
