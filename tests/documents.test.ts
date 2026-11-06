@@ -518,3 +518,93 @@ describe('what a provider may hand in', () => {
       [caseId, body.length, hex(body), body])));
   });
 });
+
+/**
+ * 0018 — the § 1812.5095(f) record can produce what it delivered.
+ *
+ * And the guard that protects it is now an allow-list. `disclosure_guard` enumerated
+ * the immutable columns, so every column added since 0004 has been freely writable:
+ * `nurse_disclosure_method` since 0004, and the one 0018 adds would have been too. The
+ * tests below check both halves — that the delivery fields still move, and that
+ * something outside the list does not.
+ */
+describe('a disclosure and the statement it sent', () => {
+  it('records the copy that went out, once, alongside the date', async () => {
+    const disclosure = await one<{ id: string; case_id: string }>(
+      `SELECT id, case_id FROM disclosures WHERE written_sent_on IS NULL
+        ORDER BY id LIMIT 1`);
+    const sent = await file({ kind: 'written_statement', case_id: disclosure.case_id });
+
+    await db.query(
+      `UPDATE disclosures
+          SET written_sent_on = current_date, written_method = 'post',
+              written_statement_document_id = $2
+        WHERE id = $1`,
+      [disclosure.id, sent]);
+
+    const row = await one<{ written_statement_document_id: string }>(
+      `SELECT written_statement_document_id FROM disclosures WHERE id = $1`,
+      [disclosure.id]);
+    expect(row.written_statement_document_id).toBe(sent);
+
+    // Not swappable afterwards. A copy that can be replaced is not evidence of what
+    // was sent.
+    const other = await file({ kind: 'written_statement', case_id: disclosure.case_id });
+    await expectRejection(
+      () => db.query(
+        `UPDATE disclosures SET written_statement_document_id = $2 WHERE id = $1`,
+        [disclosure.id, other]),
+      /already been recorded/i,
+    );
+  });
+
+  it('the guard is an allow-list: a field outside it cannot be rewritten', async () => {
+    const disclosure = await one<{ id: string }>(
+      `SELECT id FROM disclosures ORDER BY id LIMIT 1`);
+
+    // Immutable before 0018 and still immutable.
+    await expectRejection(
+      () => db.query(`UPDATE disclosures SET disclosed_to = 'somebody else' WHERE id = $1`,
+        [disclosure.id]),
+      /immutable/i,
+    );
+
+    // A column 0018 did not name is immutable because it was not named, which is the
+    // property an allow-list has and an enumeration of the immutable ones does not.
+    await expectRejection(
+      () => db.query(`UPDATE disclosures SET statutory_version = 'v99' WHERE id = $1`,
+        [disclosure.id]),
+      /immutable/i,
+    );
+  });
+
+  it('a delivery method is locked by its own delivery date, not left loose', async () => {
+    /*
+     * 0004 locked `nurse_disclosure_sent_on` and said nothing about
+     * `nurse_disclosure_method`, so "delivered in person on the 3rd" could become
+     * "delivered by post on the 3rd" afterwards. A delivery fact that can be restated
+     * later is the thing these locks exist to stop.
+     */
+    const disclosure = await one<{ id: string }>(
+      `SELECT id FROM disclosures WHERE nurse_disclosure_sent_on IS NULL
+        ORDER BY id DESC LIMIT 1`);
+
+    await db.query(
+      `UPDATE disclosures
+          SET nurse_disclosure_sent_on = current_date,
+              nurse_disclosure_method = 'in person',
+              complaint_contacts_sent_on = current_date
+        WHERE id = $1`, [disclosure.id]);
+
+    const row = await one<{ nurse_disclosure_method: string }>(
+      `SELECT nurse_disclosure_method FROM disclosures WHERE id = $1`, [disclosure.id]);
+    expect(row.nurse_disclosure_method).toBe('in person');
+
+    await expectRejection(
+      () => db.query(
+        `UPDATE disclosures SET nurse_disclosure_method = 'by post' WHERE id = $1`,
+        [disclosure.id]),
+      /cannot be changed/i,
+    );
+  });
+});

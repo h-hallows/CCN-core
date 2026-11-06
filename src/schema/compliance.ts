@@ -44,6 +44,14 @@ export const disclosures = pgTable('disclosures', {
   complaintContactsSentOn: date('complaint_contacts_sent_on'),
   /** Which version of the statutory text was delivered. See content/statutory. */
   statutoryVersion: text('statutory_version').notNull().default('v1'),
+  /**
+   * Migration 0018. The copy of the § 1812.5095(f) statement that was sent, if one was
+   * kept — so the record can produce what it delivered rather than only assert it.
+   * Optional: some statements go out by post and nobody scans the copy, and refusing
+   * the delivery record without one would make the choice an unrecorded delivery or a
+   * fabricated document.
+   */
+  writtenStatementDocumentId: uuid('written_statement_document_id'),
 }, (t) => [
   index('disclosures_case_idx').on(t.caseId, t.disclosedAt),
   check('disclosures_method_live', sql`${t.method} IN ('phone','in_person')`),
