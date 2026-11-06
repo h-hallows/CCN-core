@@ -189,6 +189,57 @@ describe('a document is evidence', () => {
     );
   });
 
+  it('can be shared and unshared, because that is a permission and not the file', async () => {
+    /*
+     * 0015 froze this flag at insert, which meant an operator who ticked "share" by
+     * mistake could only correct it by destroying the file. 0016 separates the two: the
+     * document is evidence and cannot change; who may currently see it is live, and the
+     * audit log carries the before and after of every change to it.
+     */
+    const id = await file({ case_id: caseId });
+
+    await db.query(`UPDATE documents SET visible_to_subject = true WHERE id = $1`, [id]);
+    await db.query(`UPDATE documents SET visible_to_subject = false WHERE id = $1`, [id]);
+
+    const row = await one<{ visible_to_subject: boolean; bytes: Buffer | null }>(
+      `SELECT visible_to_subject, bytes FROM documents WHERE id = $1`, [id]);
+    expect(row.visible_to_subject).toBe(false);
+    expect(row.bytes).not.toBeNull();
+  });
+
+  it('cannot be unshared and rewritten in the same breath', async () => {
+    const other = randomBytes(16);
+    const id = await file({ case_id: caseId });
+    await expectRejection(
+      () => db.query(
+        `UPDATE documents SET visible_to_subject = true, bytes = $2,
+                              sha256_hex = $3, byte_size = $4
+          WHERE id = $1`,
+        [id, other, hex(other), other.length]),
+      /immutable/i,
+    );
+  });
+
+  it('a redacted document cannot stay shared', async () => {
+    const id = await file({ case_id: caseId, visible_to_subject: true });
+    await expectRejection(
+      () => db.query(
+        `UPDATE documents SET redacted_at = now(), redacted_by = 'operator',
+                              redaction_reason = 'wrong family', bytes = NULL
+          WHERE id = $1`, [id]),
+      /cannot stay shared/i,
+    );
+    // Unshared first, then redacted. Both steps are recorded.
+    await db.query(`UPDATE documents SET visible_to_subject = false WHERE id = $1`, [id]);
+    await db.query(
+      `UPDATE documents SET redacted_at = now(), redacted_by = 'operator',
+                            redaction_reason = 'wrong family', bytes = NULL
+        WHERE id = $1`, [id]);
+    const row = await one<{ bytes: Buffer | null }>(
+      `SELECT bytes FROM documents WHERE id = $1`, [id]);
+    expect(row.bytes).toBeNull();
+  });
+
   it('cannot be rewritten — not the bytes, not the name, not who filed it', async () => {
     const other = randomBytes(32);
     const id = await file({ provider_id: providerId });
@@ -286,6 +337,7 @@ describe('who may read one', () => {
 
   it('a redacted document is not readable by its subject at all', async () => {
     const id = await file({ case_id: caseId, visible_to_subject: true });
+    await db.query(`UPDATE documents SET visible_to_subject = false WHERE id = $1`, [id]);
     await db.query(
       `UPDATE documents SET redacted_at = now(), redacted_by = 'operator',
                             redaction_reason = 'wrong family', bytes = NULL
