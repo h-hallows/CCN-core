@@ -15,7 +15,8 @@
     "./db": "./src/db/index.ts",
     "./env": "./src/env.ts",
     "./lint": "./src/lint/forbidden.mjs",
-    "./testing": "./src/testing/db.ts"
+    "./testing": "./src/testing/db.ts",
+    "./mail": "./src/mail/index.ts"
   },
   "bin": {
     "ccn-lint": "./src/lint/run.mjs"

@@ -42,6 +42,7 @@ src/schema      the tables, split by subject, and the types derived from them
 src/domain      credentials, match, businessDays, dates, care — all pure
 src/db          client, migration runner, seed
 src/lint        the I9 ruleset and the ccn-lint CLI
+src/mail        the one mail sender, which refuses to print a link in production
 src/testing     the seeded-database helper both consumers use
 migrations/     hand-written SQL, append-only
 INVARIANTS.md   one copy; both apps link to this file
