@@ -1154,3 +1154,60 @@ describe('0014 — a claim is only as good as the membership behind it', () => {
     expect(rows[0]!.h).toBe(householdId);
   });
 });
+
+/**
+ * 0020 — a partner reads their own card, and not the note about them.
+ */
+describe('0020 — partner_self()', () => {
+  it('returns the four columns that are theirs', async () => {
+    const partner = await one<{ id: string; name: string }>(
+      `SELECT id, name FROM referral_partners ORDER BY id LIMIT 1`);
+    await db.query(
+      `UPDATE referral_partners SET notes = 'Sends good work. Dislikes voicemail.'
+        WHERE id = $1`, [partner.id]);
+    const user = await one<{ id: string }>(
+      `INSERT INTO users (email, display_name, role)
+       VALUES ('self-partner@example.com', 'P', 'partner') RETURNING id`);
+    await db.query(
+      `INSERT INTO partner_users (partner_id, user_id) VALUES ($1, $2)`,
+      [partner.id, user.id]);
+
+    const claims = {
+      ccn_role: 'partner', ccn_partner_id: partner.id, ccn_user_id: user.id,
+    };
+    const rows = await asClaims(db, claims, (tx) =>
+      tx.query<Record<string, unknown>>(`SELECT * FROM partner_self()`));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.name).toBe(partner.name);
+    // The operator's note about them is not theirs to read.
+    expect(Object.keys(rows[0]!)).toEqual(['name', 'org', 'phone', 'email']);
+    expect(JSON.stringify(rows[0])).not.toContain('voicemail');
+
+    // And the table itself stays closed, which is what makes the projection the only
+    // way in rather than a convenience beside an open door.
+    const direct = await asClaims(db, claims, (tx) =>
+      tx.query(`SELECT id FROM referral_partners WHERE id = $1`, [partner.id]));
+    expect(direct).toEqual([]);
+  });
+
+  it('returns nothing for another partner, or for anybody else', async () => {
+    const [mine, theirs] = await db.query<{ id: string }>(
+      `SELECT id FROM referral_partners ORDER BY id LIMIT 2`);
+    const user = await one<{ id: string }>(
+      `SELECT user_id AS id FROM partner_users WHERE partner_id = $1 LIMIT 1`, [mine!.id]);
+
+    // A claim naming a partner the user does not belong to resolves to nothing (0014).
+    const forged = await asClaims(
+      db,
+      { ccn_role: 'partner', ccn_partner_id: theirs!.id, ccn_user_id: user.id },
+      (tx) => tx.query(`SELECT * FROM partner_self()`));
+    expect(forged).toEqual([]);
+
+    const asHousehold = await asClaims(
+      db,
+      { ccn_role: 'household', ccn_household_id: householdId, ccn_user_id: userId },
+      (tx) => tx.query(`SELECT * FROM partner_self()`));
+    expect(asHousehold).toEqual([]);
+  });
+});
