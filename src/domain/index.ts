@@ -10,3 +10,4 @@ export * from './match';
 export * from './businessDays';
 export * from './dates';
 export * from './care';
+export * from './areas';
