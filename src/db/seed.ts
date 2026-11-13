@@ -17,8 +17,8 @@ const TODAY = civilLA(NOW);
 const d = (n: number) => formatISODate(addDays(TODAY, n));
 const TODAY_ISO = formatISODate(TODAY);
 
-const AREAS = ['Pasadena', 'South Pasadena', 'San Marino', 'Altadena', 'Arcadia',
-  'Glendale', 'La Cañada', 'Sierra Madre', 'Monrovia', 'Eagle Rock'];
+const AREAS = ['Century City', 'Westwood', 'Beverly Hills', 'Brentwood', 'Holmby Hills',
+  'Santa Monica', 'Bel Air', 'Malibu', 'Pacific Palisades', 'Westwood'];
 
 const ALL_BLOCKS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
   .flatMap((day) => ['AM', 'PM', 'NOC'].map((b) => `${day}:${b}`));
@@ -56,7 +56,7 @@ const CPR = (expires: number, verified: number): Cred =>
 const PROVIDERS: SeedProvider[] = [
   {
     name: 'Alma Reyes', type: 'RN', rate: 68, transports: true, license: 'RN-842113',
-    areas: ['Pasadena', 'South Pasadena', 'San Marino'],
+    areas: ['Century City', 'Westwood', 'Beverly Hills'],
     availability: [...weekdays('AM'), ...weekdays('PM')],
     specialties: ['post_surgical', 'wound_care', 'medication_management'],
     languages: ['English', 'Spanish'],
@@ -69,7 +69,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Grace Okonkwo', type: 'RN', rate: 72, transports: false, license: 'RN-771904',
-    areas: ['Glendale', 'La Cañada', 'Pasadena'],
+    areas: ['Santa Monica', 'Bel Air', 'Century City'],
     availability: [...weekdays('PM'), 'Sat:AM', 'Sat:PM'],
     specialties: ['skilled_nursing', 'infusion', 'post_surgical'],
     languages: ['English'],
@@ -82,7 +82,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Rosalind Pham', type: 'RN', rate: 70, transports: true, license: 'RN-903552',
-    areas: ['Arcadia', 'Monrovia', 'Sierra Madre', 'Pasadena'],
+    areas: ['Holmby Hills', 'Pacific Palisades', 'Malibu', 'Century City'],
     availability: [...weekdays('NOC'), 'Sat:NOC', 'Sun:NOC'],
     specialties: ['overnight_newborn', 'skilled_nursing'],
     languages: ['English', 'Vietnamese'],
@@ -95,7 +95,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Danielle Whitfield', type: 'LVN', rate: 44, transports: false, license: 'VN-556201',
-    areas: ['Pasadena', 'Altadena', 'Eagle Rock'],
+    areas: ['Century City', 'Brentwood', 'Westwood'],
     availability: [...weekdays('AM')],
     specialties: ['personal_care', 'medication_management', 'hospice_support'],
     languages: ['English'],
@@ -106,7 +106,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Marisol Aguirre', type: 'LVN', rate: 46, transports: true, license: 'VN-610447',
-    areas: ['South Pasadena', 'Pasadena', 'San Marino'],
+    areas: ['Westwood', 'Century City', 'Beverly Hills'],
     availability: [...weekdays('PM'), 'Sat:PM'],
     specialties: ['post_surgical', 'personal_care'],
     languages: ['English', 'Spanish'],
@@ -119,7 +119,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Tomás Beltrán', type: 'LVN', rate: 45, transports: true,
-    areas: ['Monrovia', 'Arcadia'],
+    areas: ['Pacific Palisades', 'Holmby Hills'],
     availability: [...weekdays('AM'), ...weekdays('PM')],
     specialties: ['personal_care', 'respite'],
     languages: ['English', 'Spanish'],
@@ -135,7 +135,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Yolanda Brooks', type: 'CNA', rate: 34, transports: true,
-    areas: ['Pasadena', 'Altadena', 'Sierra Madre'],
+    areas: ['Century City', 'Brentwood', 'Malibu'],
     availability: [...weekdays('AM'), 'Sat:AM', 'Sun:AM'],
     specialties: ['personal_care', 'dementia', 'respite'],
     languages: ['English'],
@@ -148,7 +148,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Priya Raghunathan', type: 'CNA', rate: 36, transports: false,
-    areas: ['Arcadia', 'Pasadena', 'San Marino'],
+    areas: ['Holmby Hills', 'Century City', 'Beverly Hills'],
     availability: [...weekdays('PM'), ...weekdays('NOC')],
     specialties: ['dementia', 'personal_care', 'hospice_support'],
     languages: ['English', 'Hindi', 'Tamil'],
@@ -159,7 +159,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Nadia Haddad', type: 'CNA', rate: 35, transports: true,
-    areas: ['Glendale', 'Eagle Rock', 'Pasadena'],
+    areas: ['Santa Monica', 'Westwood', 'Century City'],
     availability: [...weekdays('AM'), ...weekdays('PM'), 'Sat:AM'],
     specialties: ['personal_care', 'post_surgical'],
     languages: ['English', 'Arabic'],
@@ -173,7 +173,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Esperanza Cruz', type: 'HCA', rate: 28, transports: true,
-    areas: ['Pasadena', 'South Pasadena', 'Altadena'],
+    areas: ['Century City', 'Westwood', 'Brentwood'],
     availability: [...weekdays('AM'), ...weekdays('PM'), 'Sat:AM', 'Sat:PM'],
     specialties: ['companion', 'personal_care', 'meal_preparation'],
     languages: ['English', 'Spanish'],
@@ -186,7 +186,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Lucille Barnett', type: 'HCA', rate: 27, transports: false,
-    areas: ['Sierra Madre', 'Arcadia', 'Monrovia'],
+    areas: ['Malibu', 'Holmby Hills', 'Pacific Palisades'],
     availability: [...weekdays('AM'), 'Sun:AM', 'Sun:PM'],
     specialties: ['companion', 'dementia'],
     languages: ['English'],
@@ -197,7 +197,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Fatima Noor', type: 'HCA', rate: 29, transports: true,
-    areas: ['Glendale', 'La Cañada', 'Pasadena'],
+    areas: ['Santa Monica', 'Bel Air', 'Century City'],
     availability: [...weekdays('NOC'), 'Sat:NOC'],
     specialties: ['companion', 'overnight_newborn', 'respite'],
     languages: ['English', 'Urdu'],
@@ -210,7 +210,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Jean Mbeki', type: 'companion', rate: 24, transports: true,
-    areas: ['Pasadena', 'Eagle Rock', 'Glendale'],
+    areas: ['Century City', 'Westwood', 'Santa Monica'],
     availability: [...weekdays('PM'), 'Sat:PM', 'Sun:PM'],
     specialties: ['companion', 'transportation', 'errands'],
     languages: ['English', 'French'],
@@ -222,7 +222,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Harriet Soon', type: 'companion', rate: 23, transports: true,
-    areas: ['San Marino', 'Pasadena', 'Arcadia'],
+    areas: ['Beverly Hills', 'Century City', 'Holmby Hills'],
     availability: [...weekdays('AM'), 'Sat:AM'],
     specialties: ['companion', 'errands'],
     languages: ['English', 'Mandarin'],
@@ -235,7 +235,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Bea Villanueva', type: 'companion', rate: 22, transports: false,
-    areas: ['Altadena', 'Pasadena'],
+    areas: ['Brentwood', 'Century City'],
     availability: [...weekdays('AM'), ...weekdays('PM')],
     specialties: ['companion', 'meal_preparation'],
     languages: ['English', 'Tagalog'],
@@ -244,7 +244,7 @@ const PROVIDERS: SeedProvider[] = [
   {
     name: 'Corinne Adeyemi', type: 'CNA', rate: 37, transports: false,
     status: 'inactive',
-    areas: ['Pasadena', 'South Pasadena'],
+    areas: ['Century City', 'Westwood'],
     availability: [...weekdays('AM')],
     specialties: ['personal_care', 'post_surgical'],
     languages: ['English'],
@@ -258,7 +258,7 @@ const PROVIDERS: SeedProvider[] = [
   {
     name: 'Walter Nkemdirim', type: 'HCA', rate: 26, transports: false,
     status: 'do_not_refer',
-    areas: ['Monrovia'],
+    areas: ['Pacific Palisades'],
     availability: [...weekdays('PM')],
     specialties: ['companion'],
     languages: ['English'],
@@ -270,7 +270,7 @@ const PROVIDERS: SeedProvider[] = [
   },
   {
     name: 'Imelda Santoyo', type: 'RN', rate: 75, transports: false, license: 'RN-660128',
-    areas: ['Pasadena', 'San Marino', 'South Pasadena', 'Altadena', 'Arcadia'],
+    areas: ['Century City', 'Beverly Hills', 'Westwood', 'Brentwood', 'Holmby Hills'],
     availability: ALL_BLOCKS,
     specialties: ['skilled_nursing', 'hospice_support', 'post_surgical', 'wound_care'],
     languages: ['English', 'Spanish'],
@@ -315,13 +315,13 @@ interface SeedCase {
 const CASES: SeedCase[] = [
   {
     household: {
-      displayName: 'Abernathy — San Marino', dmName: 'Claire Abernathy',
+      displayName: 'Abernathy — Beverly Hills', dmName: 'Claire Abernathy',
       dmRelationship: 'Daughter', dmLocation: 'Boston, MA', dmTimezone: 'America/New_York',
-      crName: 'Howard Abernathy', crAge: 87, crArea: 'San Marino',
-      physician: { name: 'Dr. Lillian Okafor', practice: 'Huntington Internal Medicine', phone: '(626) 555-0142', fax: '(626) 555-0143' },
+      crName: 'Howard Abernathy', crAge: 87, crArea: 'Beverly Hills',
+      physician: { name: 'Dr. Lillian Okafor', practice: 'Westside Internal Medicine', phone: '(310) 555-0142', fax: '(310) 555-0143' },
       payment: 'ltc_policy', ltc: { carrier: 'Genworth', policy: 'GW-4471902' },
       source: 'Discharge planner referral', nda: true,
-      accessNotes: 'Gate code at the Oak Knoll entrance. Dog is friendly but loud.',
+      accessNotes: 'Gate code at the Comstock gate. Dog is friendly but loud.',
     },
     care: 'skilled_nursing', urgency: 'routine', status: 'active',
     needs: 'Dad came home after a long hospital stay and needs his wound dressed and his medications set up every morning. He is sharp but unsteady. He will not accept help with bathing from anyone he has not met twice.',
@@ -333,10 +333,10 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Oyelaran — Glendale', dmName: 'Tunde Oyelaran',
-      dmRelationship: 'Son', dmLocation: 'Glendale, CA', dmTimezone: 'America/Los_Angeles',
-      crName: 'Adunni Oyelaran', crAge: 79, crArea: 'Glendale',
-      physician: { name: 'Dr. Marcus Reinholt', practice: 'Verdugo Hills Medical Group', phone: '(818) 555-0177' },
+      displayName: 'Oyelaran — Santa Monica', dmName: 'Tunde Oyelaran',
+      dmRelationship: 'Son', dmLocation: 'Santa Monica, CA', dmTimezone: 'America/Los_Angeles',
+      crName: 'Adunni Oyelaran', crAge: 79, crArea: 'Santa Monica',
+      physician: { name: 'Dr. Marcus Reinholt', practice: 'Wilshire Medical Group', phone: '(310) 555-0177' },
       payment: 'private', source: 'Word of mouth',
     },
     care: 'skilled_nursing', urgency: 'routine', status: 'active',
@@ -351,10 +351,10 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Castellanos — Pasadena', dmName: 'Rafael Castellanos',
-      dmRelationship: 'Husband', crName: 'Paloma Castellanos', crAge: 74, crArea: 'Pasadena',
+      displayName: 'Castellanos — Century City', dmName: 'Rafael Castellanos',
+      dmRelationship: 'Husband', crName: 'Paloma Castellanos', crAge: 74, crArea: 'Century City',
       payment: 'private', source: 'Returning household',
-      physician: { name: 'Dr. Anne Beaumont', practice: 'Huntington Neurology', phone: '(626) 555-0190' },
+      physician: { name: 'Dr. Anne Beaumont', practice: 'Westside Neurology', phone: '(310) 555-0190' },
     },
     care: 'personal_care', urgency: 'routine', status: 'active',
     needs: 'My wife has Parkinson\'s. I do the nights. I need help in the mornings with bathing and breakfast so I can sleep.',
@@ -366,10 +366,10 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Lindqvist — Altadena', dmName: 'Sofia Lindqvist',
+      displayName: 'Lindqvist — Brentwood', dmName: 'Sofia Lindqvist',
       dmRelationship: 'Daughter', dmLocation: 'Stockholm, Sweden', dmTimezone: 'Europe/Stockholm',
-      crName: 'Birgit Lindqvist', crAge: 91, crArea: 'Altadena',
-      payment: 'private', source: 'Partner: Huntington discharge planning',
+      crName: 'Birgit Lindqvist', crAge: 91, crArea: 'Brentwood',
+      payment: 'private', source: 'Partner: Saint John’s discharge planning',
     },
     care: 'companion', urgency: 'routine', status: 'active',
     needs: 'Grandmother lives alone and is lonely more than she is unwell. Someone to sit with her, make lunch, and tell me if something changes.',
@@ -381,10 +381,10 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Mwangi — Arcadia', dmName: 'Grace Mwangi',
-      dmRelationship: 'Daughter-in-law', crName: 'Joseph Mwangi', crAge: 83, crArea: 'Arcadia',
+      displayName: 'Mwangi — Holmby Hills', dmName: 'Grace Mwangi',
+      dmRelationship: 'Daughter-in-law', crName: 'Joseph Mwangi', crAge: 83, crArea: 'Holmby Hills',
       payment: 'private', source: 'Discharge planner referral',
-      physician: { name: 'Dr. Priscilla Vance', practice: 'Methodist Hospital of Southern California', phone: '(626) 555-0211', fax: '(626) 555-0212' },
+      physician: { name: 'Dr. Priscilla Vance', practice: 'UCLA Santa Monica Medical Center', phone: '(310) 555-0211', fax: '(310) 555-0212' },
     },
     care: 'post_surgical', urgency: 'discharge', status: 'referred',
     needs: 'He comes home Thursday after a hip replacement. We need someone the first two weeks who can help him move safely and watch the incision.',
@@ -396,9 +396,9 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Tanaka — South Pasadena', dmName: 'Ken Tanaka',
+      displayName: 'Tanaka — Westwood', dmName: 'Ken Tanaka',
       dmRelationship: 'Son', dmLocation: 'Seattle, WA', dmTimezone: 'America/Los_Angeles',
-      crName: 'Michiko Tanaka', crAge: 88, crArea: 'South Pasadena',
+      crName: 'Michiko Tanaka', crAge: 88, crArea: 'Westwood',
       payment: 'ltc_policy', ltc: { carrier: 'John Hancock', policy: 'JH-88214400' },
       source: 'Elder law attorney referral',
     },
@@ -412,8 +412,8 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Ferreira — Monrovia', dmName: 'Beatriz Ferreira',
-      dmRelationship: 'Wife', crName: 'Jorge Ferreira', crAge: 70, crArea: 'Monrovia',
+      displayName: 'Ferreira — Pacific Palisades', dmName: 'Beatriz Ferreira',
+      dmRelationship: 'Wife', crName: 'Jorge Ferreira', crAge: 70, crArea: 'Pacific Palisades',
       payment: 'va', source: 'VA social worker',
     },
     care: 'personal_care', urgency: 'next_day', status: 'inquiry',
@@ -424,8 +424,8 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Okafor — Pasadena', dmName: 'Chidi Okafor',
-      dmRelationship: 'Son', crName: 'Ngozi Okafor', crAge: 76, crArea: 'Pasadena',
+      displayName: 'Okafor — Century City', dmName: 'Chidi Okafor',
+      dmRelationship: 'Son', crName: 'Ngozi Okafor', crAge: 76, crArea: 'Century City',
       payment: 'private', source: 'Website enquiry',
     },
     care: 'respite', urgency: 'routine', status: 'inquiry',
@@ -435,9 +435,9 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Rosenthal — La Cañada', dmName: 'Dov Rosenthal',
+      displayName: 'Rosenthal — Bel Air', dmName: 'Dov Rosenthal',
       dmRelationship: 'Son', dmLocation: 'New York, NY', dmTimezone: 'America/New_York',
-      crName: 'Miriam Rosenthal', crAge: 84, crArea: 'La Cañada',
+      crName: 'Miriam Rosenthal', crAge: 84, crArea: 'Bel Air',
       payment: 'private', source: 'Partner: geriatric care manager',
     },
     care: 'companion', urgency: 'discharge', status: 'inquiry',
@@ -448,8 +448,8 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Delacroix — Eagle Rock', dmName: 'Simone Delacroix',
-      dmRelationship: 'Daughter', crName: 'Henriette Delacroix', crAge: 81, crArea: 'Eagle Rock',
+      displayName: 'Delacroix — Westwood', dmName: 'Simone Delacroix',
+      dmRelationship: 'Daughter', crName: 'Henriette Delacroix', crAge: 81, crArea: 'Westwood',
       payment: 'private', source: 'Word of mouth',
     },
     care: 'companion', urgency: 'routine', status: 'ended',
@@ -466,8 +466,8 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Shaw — Sierra Madre', dmName: 'Edith Shaw',
-      dmRelationship: 'Self', crName: 'Edith Shaw', crAge: 78, crArea: 'Sierra Madre',
+      displayName: 'Shaw — Malibu', dmName: 'Edith Shaw',
+      dmRelationship: 'Self', crName: 'Edith Shaw', crAge: 78, crArea: 'Malibu',
       payment: 'private', source: 'Returning household',
     },
     care: 'overnight_newborn', urgency: 'routine', status: 'matching',
@@ -478,11 +478,11 @@ const CASES: SeedCase[] = [
   },
   {
     household: {
-      displayName: 'Bhattacharya — San Marino', dmName: 'Anil Bhattacharya',
+      displayName: 'Bhattacharya — Beverly Hills', dmName: 'Anil Bhattacharya',
       dmRelationship: 'Son', dmLocation: 'London, UK', dmTimezone: 'Europe/London',
-      crName: 'Sunita Bhattacharya', crAge: 86, crArea: 'San Marino',
+      crName: 'Sunita Bhattacharya', crAge: 86, crArea: 'Beverly Hills',
       payment: 'private', source: 'Partner: estate attorney', nda: true,
-      physician: { name: 'Dr. Howard Lim', practice: 'Huntington Cardiology', phone: '(626) 555-0255' },
+      physician: { name: 'Dr. Howard Lim', practice: 'Pacific Cardiology', phone: '(310) 555-0255' },
     },
     care: 'personal_care', urgency: 'routine', status: 'active',
     needs: 'Mother is frail and forgets her tablets. She is proud and will say she does not need anyone. Please send the same person each time.',
@@ -501,11 +501,11 @@ async function seed(handle: DbHandle): Promise<void> {
   const [partnerA] = await q<{ id: string }>(
     `INSERT INTO referral_partners (name, org, role, phone, email)
      VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-    ['Dolores Hwang', 'Huntington Hospital', 'Discharge planner', '(626) 555-0100', 'd.hwang@example.org'],
+    ['Dolores Hwang', 'Saint John’s Health Center', 'Discharge planner', '(310) 555-0100', 'd.hwang@example.org'],
   );
   await q(
     `INSERT INTO referral_partners (name, org, role, phone, email) VALUES ($1,$2,$3,$4,$5)`,
-    ['Martin Qureshi', 'Qureshi Elder Law', 'Attorney', '(626) 555-0109', 'martin@example.com'],
+    ['Martin Qureshi', 'Qureshi Elder Law', 'Attorney', '(310) 555-0109', 'martin@example.com'],
   );
   await q(
     `INSERT INTO referral_partners (name, org, role, phone, email) VALUES ($1,$2,$3,$4,$5)`,
@@ -531,7 +531,7 @@ async function seed(handle: DbHandle): Promise<void> {
        RETURNING id`,
       [
         p.status ?? 'active', p.name, p.type,
-        `(626) 555-${String(1000 + PROVIDERS.indexOf(p) * 7).slice(-4)}`,
+        `(310) 555-${String(1000 + PROVIDERS.indexOf(p) * 7).slice(-4)}`,
         `${p.name.toLowerCase().replace(/[^a-z]+/g, '.')}@example.com`,
         p.license ?? null,
         p.rate, p.rate === null ? null : 'Provider-stated. Negotiable with the household.',
@@ -590,7 +590,7 @@ async function seed(handle: DbHandle): Promise<void> {
        RETURNING id`,
       [
         h.displayName, sc.status === 'ended' ? 'ended' : 'open', h.dmName, h.dmRelationship ?? null,
-        `(626) 555-${String(2000 + CASES.indexOf(sc) * 11).slice(-4)}`,
+        `(310) 555-${String(2000 + CASES.indexOf(sc) * 11).slice(-4)}`,
         `${h.dmName.toLowerCase().replace(/[^a-z]+/g, '.')}@example.com`,
         h.dmLocation ?? null, h.dmTimezone ?? 'America/Los_Angeles',
         h.crName ?? null, h.crAge ?? null, h.crArea,

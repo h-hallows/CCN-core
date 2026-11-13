@@ -107,7 +107,7 @@ describe('§ 1812.529 — the assignment log is permanent', () => {
       `INSERT INTO assignment_log
          (case_id, referral_id, provider_id, order_received_at, patient_name,
           patient_address, attending_physician, service_from, fee_basis, recorded_by)
-       VALUES ($1,$2,$3, now(), 'H. Abernathy', '100 Oak Knoll Ave, San Marino, CA',
+       VALUES ($1,$2,$3, now(), 'H. Abernathy', '100 Comstock Ave, Brentwood, CA',
                'Dr. Lillian Okafor', now(), '18% of job cost', 'operator')
        RETURNING id`, [caseId, referralId, providerId]);
     expect(rows).toHaveLength(1);

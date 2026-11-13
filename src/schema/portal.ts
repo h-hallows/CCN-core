@@ -78,7 +78,7 @@ export const testimonials = pgTable('testimonials', {
   householdId: uuid('household_id').notNull().references(() => households.id),
   consentId: uuid('consent_id').notNull().references(() => consents.id),
   body: text('body').notNull(),
-  /** "James T., San Marino" — never a full name, never a provider. */
+  /** "James T., Brentwood" — never a full name, never a provider. */
   attribution: text('attribution').notNull(),
   serviceLine: text('service_line'),
   published: boolean('published').notNull().default(false),

@@ -263,7 +263,7 @@ describe('§ 3.5 a testimonial cannot outlive its consent', () => {
     );
     const [t] = await db.query<{ published: boolean }>(
       `INSERT INTO testimonials (household_id, consent_id, body, attribution, published)
-       VALUES ($1, $2, 'They found someone my father actually likes.', 'James T., San Marino', true)
+       VALUES ($1, $2, 'They found someone my father actually likes.', 'James T., Brentwood', true)
        RETURNING published`,
       [householdId, consent!.id],
     );
