@@ -177,6 +177,22 @@ export const AUDIT_ENTITIES = {
     byHousehold: `SELECT id FROM consents WHERE subject_type = 'household' AND subject_id = $1`,
     byProvider: `SELECT id FROM consents WHERE subject_type = 'provider' AND subject_id = $1`,
   },
+  service_failure: {
+    table: 'service_failures',
+    label: 'Service failure',
+    /*
+     * A missed shift is a household's missed shift. § 8 counts these to measure
+     * capacity, but each row is also the record of a day somebody did not get the care
+     * they were expecting — so it belongs on that household's trail, not only in a
+     * denominator.
+     */
+    byHousehold:
+      `SELECT f.id FROM service_failures f
+         JOIN cases c ON c.id = f.case_id
+        WHERE c.household_id = $1`,
+    byProvider: null,
+    collection: true,
+  },
   fee_schedule: {
     table: 'fee_schedules',
     label: 'Fee schedule',
@@ -311,9 +327,10 @@ export const UNAUDITED_TABLES: Record<string, string> = {
   rate_limit_hits: 'Hashed keys and a route. Holds nothing about a person.',
 
   // Instrumentation and aggregates. § 8, not § 3.8.
-  metric_events: 'Instrumentation. One enum and a case id — no identifiable detail.',
-  service_failures: 'Instrumentation. Displayed as a count, never as a record.',
-  case_month_hours: 'Aggregate with a composite key, so no entity_id can name a row.',
+  metric_events:
+    'Instrumentation. An enum, a timestamp and a foreign key; the screen that reads it\n     only ever counts and never names anybody, so there is no row to audit a read of.',
+  case_month_hours:
+    'A composite key, so no entity_id can name a row. Reads of it are recorded against\n     the case instead, which is the subject anyway.',
   operator_notifications: 'Operator-facing queue. Superseded by the specific queues.',
 
   // Written by nothing yet. Each will need an entity above when a screen touches it.
