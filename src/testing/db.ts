@@ -136,3 +136,51 @@ export async function expectDenied(run: () => Promise<unknown>): Promise<void> {
   }
   if (!denied) throw new Error('expected the statement to be denied, but it succeeded');
 }
+
+/**
+ * Insert a referral the way `makeReferral` does: with its § 1812.529 log sheet, in one
+ * transaction.
+ *
+ * Fixtures used to insert into `referrals` directly, which stopped working the moment
+ * the statute was enforced — correctly, because that is what the enforcement is for. The
+ * helper exists so a test does not have to restate the pairing, and so a fixture cannot
+ * drift into a shape production can no longer produce.
+ */
+export async function insertReferral(
+  handle: DbHandle,
+  input: {
+    caseId: string;
+    providerId: string;
+    disclosureId: string;
+    referredBy?: string;
+    outcome?: string | null;
+  },
+): Promise<string> {
+  const { isSkilled } = await import('../domain/care');
+  const { ASSIGNMENT_LOG_INSERT, feeBasisOf } = await import('../domain/assignment');
+  return handle.transaction(async (tx) => {
+    const [kase] = await tx.query<{ care: string; fee_pct: string | null }>(
+      `SELECT care, fee_pct FROM cases WHERE id = $1`, [input.caseId]);
+    if (!kase) throw new Error(`insertReferral: no case ${input.caseId}`);
+
+    const [ref] = await tx.query<{ id: string }>(
+      `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by, outcome,
+                              outcome_at)
+       VALUES ($1, $2, $3, $4, $5::referral_outcome,
+               CASE WHEN $5::referral_outcome IS NULL THEN NULL ELSE now() END)
+       RETURNING id`,
+      [input.caseId, input.providerId, input.disclosureId, input.referredBy ?? 'operator',
+        input.outcome ?? null],
+    );
+    if (!ref) throw new Error('insertReferral: the referral did not insert');
+
+    if (isSkilled(kase.care)) {
+      const basis = feeBasisOf(kase.fee_pct)
+        // A fixture with no fee on the case still gets a truthful sheet rather than a
+        // silent NOT NULL failure three frames away from the test that caused it.
+        ?? 'fee not recorded on the case (test fixture)';
+      await tx.query(ASSIGNMENT_LOG_INSERT, [ref.id, basis, 'test']);
+    }
+    return ref.id;
+  });
+}

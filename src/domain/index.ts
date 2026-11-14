@@ -12,3 +12,4 @@ export * from './dates';
 export * from './care';
 export * from './areas';
 export * from './audit';
+export * from './assignment';

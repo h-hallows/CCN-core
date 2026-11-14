@@ -111,6 +111,22 @@ export const AUDIT_ENTITIES = {
         WHERE household_id = $1 OR case_id IN (${CASES_OF})`,
     byProvider: `SELECT id FROM documents WHERE provider_id = $1`,
   },
+  assignment: {
+    table: 'assignment_log',
+    label: 'Assignment log entry',
+    /*
+     * Civil Code § 1812.529. A log sheet names the patient, the address care is given
+     * at and the attending physician, so reading the register is reading identifiable
+     * information about those households — and about the nurse referred, which is why
+     * it sits in both spans rather than only the household's.
+     */
+    byHousehold:
+      `SELECT a.id FROM assignment_log a
+         JOIN cases c ON c.id = a.case_id
+        WHERE c.household_id = $1`,
+    byProvider: `SELECT id FROM assignment_log WHERE provider_id = $1`,
+    collection: true,
+  },
   referral: {
     table: 'referrals',
     label: 'Referral',
@@ -334,7 +350,6 @@ export const UNAUDITED_TABLES: Record<string, string> = {
   operator_notifications: 'Operator-facing queue. Superseded by the specific queues.',
 
   // Written by nothing yet. Each will need an entity above when a screen touches it.
-  assignment_log: 'HSC § 1726(c) register. No screen reads it yet (DEFERRED.md).',
   advertising_log: '§ 1812.533(b)(2) advertising record. No screen reads it yet.',
   coverage_gaps: 'Blocked on the nine-factor audit; deliberately unread (V1-REVIEW § 7).',
   rate_ranges: 'Reference data, not about a person.',

@@ -102,15 +102,34 @@ describe('§ 1812.528 — the licence is inspected, not just looked up', () => {
 });
 
 describe('§ 1812.529 — the assignment log is permanent', () => {
-  it('records an assignment', async () => {
-    const rows = await db.query(
-      `INSERT INTO assignment_log
-         (case_id, referral_id, provider_id, order_received_at, patient_name,
-          patient_address, attending_physician, service_from, fee_basis, recorded_by)
-       VALUES ($1,$2,$3, now(), 'H. Abernathy', '100 Comstock Ave, Brentwood, CA',
-               'Dr. Lillian Okafor', now(), '18% of job cost', 'operator')
-       RETURNING id`, [caseId, referralId, providerId]);
-    expect(rows).toHaveLength(1);
+  /*
+   * This used to insert a sheet of its own, which is how the table came to be tested
+   * and never written: the test supplied the row the application did not. Migration
+   * 0023 makes the sheet part of the referral, so the assertion is now that the
+   * referral already has one and that nothing can file a second original for it.
+   */
+  it('a private duty nursing referral already carries its entry', async () => {
+    const row = await one<{
+      patient_name: string; patient_address: string; attending_physician: string;
+      fee_basis: string;
+    }>(`SELECT patient_name, patient_address, attending_physician, fee_basis
+          FROM assignment_log WHERE referral_id = $1`, [referralId]);
+    expect(row.patient_name.length).toBeGreaterThan(1);
+    expect(row.patient_address).toMatch(/CA$/);
+    expect(row.attending_physician).toMatch(/^Dr\./);
+    expect(row.fee_basis).toMatch(/% of job cost/);
+  });
+
+  it('refuses a second original entry for the same referral', async () => {
+    await expectRejection(
+      () => db.query(
+        `INSERT INTO assignment_log
+           (case_id, referral_id, provider_id, order_received_at, patient_name,
+            patient_address, attending_physician, service_from, fee_basis, recorded_by)
+         VALUES ($1,$2,$3, now(), 'H. Abernathy', '100 Comstock Ave, Brentwood, CA',
+                 'Dr. Lillian Okafor', now(), '18% of job cost', 'operator')`,
+        [caseId, referralId, providerId]),
+      /assignment_log_original_per_referral|duplicate key/i);
   });
 
   it('UPDATE raises — "no false entries" is easier to prove when nothing can be rewritten', async () => {

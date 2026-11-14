@@ -11,6 +11,8 @@ import { applyMigrations, loadWorkspaceEnv } from './migrate';
 import { truncateAll } from '../testing/db';
 import { addDays, civilLA, formatISODate } from '../domain/dates';
 import { writtenStatementDueOn } from '../domain/businessDays';
+import { isSkilled } from '../domain/care';
+import { ASSIGNMENT_LOG_INSERT, feeBasisOf } from '../domain/assignment';
 
 const NOW = new Date();
 const TODAY = civilLA(NOW);
@@ -684,13 +686,32 @@ async function seed(handle: DbHandle): Promise<void> {
           sc.referral.writtenSent ? dueOn : null,
           sc.referral.writtenSent ? 'email and post' : null],
       );
-      await q(
-        `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by, referred_at, outcome, outcome_at)
-         VALUES ($1,$2,$3,'operator',$4,$5,$6)`,
-        [kase.id, providerId, disc!.id, at,
-          sc.status === 'active' || sc.status === 'ended' ? 'engaged' : null,
-          sc.status === 'active' || sc.status === 'ended' ? at : null],
-      );
+      /*
+       * The referral and its § 1812.529 log sheet go in together, because
+       * trg_assignment_logged checks for the sheet at COMMIT. Seeding them in one
+       * transaction is not a test convenience: it is the same shape makeReferral has to
+       * use, so a seeded register is a register of the kind the app writes.
+       */
+      await handle.transaction(async (tx) => {
+        const [ref] = await tx.query<{ id: string }>(
+          `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by, referred_at, outcome, outcome_at)
+           VALUES ($1,$2,$3,'operator',$4,$5,$6) RETURNING id`,
+          [kase.id, providerId, disc!.id, at,
+            sc.status === 'active' || sc.status === 'ended' ? 'engaged' : null,
+            sc.status === 'active' || sc.status === 'ended' ? at : null],
+        );
+        if (!ref) throw new Error(`could not insert referral for ${h.displayName}`);
+        if (isSkilled(sc.care)) {
+          const basis = feeBasisOf(sc.feePct ?? null);
+          if (!basis) {
+            throw new Error(
+              `${h.displayName}: a private duty nursing referral needs a fee on the case `
+              + 'before it can be entered in the assignment log',
+            );
+          }
+          await tx.query(ASSIGNMENT_LOG_INSERT, [ref.id, basis, 'operator']);
+        }
+      });
       await q(
         `INSERT INTO timeline_entries (case_id, type, author, body, provider_id, at)
          VALUES ($1,'referral','operator',$2,$3,$4)`,

@@ -8,7 +8,9 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { DbHandle } from '../src/db/client';
-import { asClaims, expectDenied, expectRejection, seededDb } from '../src/testing/db';
+import {
+  asClaims, expectDenied, expectRejection, insertReferral, seededDb,
+} from '../src/testing/db';
 
 let db: DbHandle;
 let householdId: string;
@@ -407,17 +409,12 @@ describe('W7 — what the client portal may read', () => {
       [caseId])).id;
 
     // A referral on this household's case, and one on somebody else's.
-    ownReferralId = (await one<{ id: string }>(
-      `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by)
-       VALUES ($1, $2, $3, 'operator') RETURNING id`,
-      [caseId, providerId, disclosureId])).id;
+    ownReferralId = await insertReferral(db, { caseId, providerId, disclosureId });
 
     const otherCase = await one<{ id: string }>(
       `SELECT id FROM cases WHERE household_id = $1 LIMIT 1`, [otherHouseholdId]);
-    otherReferralId = (await one<{ id: string }>(
-      `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by)
-       VALUES ($1, $2, $3, 'operator') RETURNING id`,
-      [otherCase.id, providerId, disclosureId])).id;
+    otherReferralId = await insertReferral(db,
+      { caseId: otherCase.id, providerId, disclosureId });
 
     feedbackId = (await one<{ id: string }>(
       `INSERT INTO referral_feedback (referral_id, referral_service_rating, would_refer_again, notes)
@@ -526,10 +523,7 @@ describe('W7 — a household can still name the person in its house', () => {
 
     // Referred to this household's case, then the bench taken down — the ordinary
     // sequence, and the one that used to make the provider invisible.
-    await db.query(
-      `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by)
-       VALUES ($1, $2, $3, 'operator')`,
-      [caseId, engagedId, disclosureId]);
+    await insertReferral(db, { caseId, providerId: engagedId, disclosureId });
 
     withdrawnListId = (await one<{ id: string }>(
       `INSERT INTO published_shortlists (case_id, published_by, withdrawn_at)
