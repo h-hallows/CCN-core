@@ -123,7 +123,7 @@ describe('append-only compliance record', () => {
     // fires nothing and succeeds — which would make this assertion pass for the wrong
     // reason on an empty table.
     await db.query(
-      `INSERT INTO audit_log (actor, action, entity) VALUES ('test', 'read', 'providers')`,
+      `INSERT INTO audit_log (actor, action, entity) VALUES ('test', 'read', 'provider')`,
     );
     await expectRejection(() => db.query(`DELETE FROM audit_log`), /append-only/i);
   });
