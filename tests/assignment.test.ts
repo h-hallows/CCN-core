@@ -298,6 +298,43 @@ describe('what counts as missing', () => {
     expect(assignmentMissing(complete)).toEqual([]);
   });
 
+  /*
+   * And on a record as the DATABASE hands it over, which is not the same test. The first
+   * version of AssignmentFacts declared `startsOn: string`, and a `date` column arrives
+   * from the driver as a Date — so the check reported every start date in the database
+   * as absent and refused every nursing referral. A fixture of string literals passed
+   * throughout. This is the assertion that would have caught it.
+   */
+  it('finds nothing missing on a seeded case read straight out of the table', async () => {
+    const rows = await db.query<{
+      care: string; cr_name: string | null; cr_address: string | null;
+      physician_name: string | null; starts_on: string | null; fee_pct: string | null;
+    }>(
+      `SELECT c.care::text AS care, h.cr_name, h.cr_address, h.physician_name,
+              c.starts_on, c.fee_pct
+         FROM cases c JOIN households h ON h.id = c.household_id
+        WHERE EXISTS (SELECT 1 FROM referrals r WHERE r.case_id = c.id)
+          AND c.care IN ('skilled_nursing','post_surgical','hospice_support')`);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(assignmentMissing({
+        care: row.care,
+        patientName: row.cr_name,
+        patientAddress: row.cr_address,
+        attendingPhysician: row.physician_name,
+        startsOn: row.starts_on,
+        feePct: row.fee_pct,
+      }), `a referred nursing case reads as missing fields: ${row.cr_name}`).toEqual([]);
+    }
+  });
+
+  it('reads a start date whatever shape the driver hands it in', () => {
+    expect(assignmentMissing({ ...complete, startsOn: new Date('2026-12-01T00:00:00Z') }))
+      .toEqual([]);
+    expect(assignmentMissing({ ...complete, startsOn: '2026-12-01T00:00:00.000Z' }))
+      .toEqual([]);
+  });
+
   it('asks for nothing at all outside Chapter 7', () => {
     expect(assignmentMissing({
       care: 'companion', patientName: null, patientAddress: null,

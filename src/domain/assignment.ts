@@ -33,6 +33,7 @@
  * would be exactly the false entry the section names.
  */
 import { isSkilled } from './care';
+import { asISODate } from './dates';
 
 
 /** One of the entries § 1812.529 enumerates, and where this registry keeps it. */
@@ -124,7 +125,14 @@ export interface AssignmentFacts {
   patientName: string | null | undefined;
   patientAddress: string | null | undefined;
   attendingPhysician: string | null | undefined;
-  startsOn: string | null | undefined;
+  /**
+   * `cases.starts_on`. Typed loosely on purpose: a `date` column comes back from the
+   * driver as a Date, and the first version of this interface declared it `string`,
+   * which made `assignmentMissing` report every start date in the database as absent and
+   * refuse every nursing referral. `asISODate` is the one place that reads a date
+   * whatever shape it arrives in.
+   */
+  startsOn: string | Date | null | undefined;
   /** `cases.fee_pct`. Numeric comes back from Postgres as a string. */
   feePct: number | string | null | undefined;
 }
@@ -165,7 +173,7 @@ export function assignmentMissing(facts: AssignmentFacts): AssignmentField[] {
   if (!present(facts.patientName)) missing.push('patient_name');
   if (!present(facts.patientAddress)) missing.push('patient_address');
   if (!present(facts.attendingPhysician)) missing.push('attending_physician');
-  if (!present(facts.startsOn)) missing.push('service_from');
+  if (asISODate(facts.startsOn) === null) missing.push('service_from');
   if (feeBasisOf(facts.feePct) === null) missing.push('fee_basis');
   return missing;
 }
