@@ -179,7 +179,7 @@ export async function insertReferral(
         // A fixture with no fee on the case still gets a truthful sheet rather than a
         // silent NOT NULL failure three frames away from the test that caused it.
         ?? 'fee not recorded on the case (test fixture)';
-      await tx.query(ASSIGNMENT_LOG_INSERT, [ref.id, basis, 'test']);
+      await tx.query(ASSIGNMENT_LOG_INSERT, [ref.id, basis, 'test', null]);
     }
     return ref.id;
   });

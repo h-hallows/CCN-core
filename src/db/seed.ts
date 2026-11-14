@@ -709,7 +709,13 @@ async function seed(handle: DbHandle): Promise<void> {
               + 'before it can be entered in the assignment log',
             );
           }
-          await tx.query(ASSIGNMENT_LOG_INSERT, [ref.id, basis, 'operator']);
+          /*
+           * `at` as the fourth argument, not now(): the seed is fabricating a history,
+           * and a sheet stamped today against a referral dated two months ago would
+           * read on the register as an entry filed two months late. The application
+           * always passes null here.
+           */
+          await tx.query(ASSIGNMENT_LOG_INSERT, [ref.id, basis, 'operator', at]);
         }
       });
       await q(

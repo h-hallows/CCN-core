@@ -18,7 +18,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   ASSIGNMENT_FIELDS, ASSIGNMENT_LOG_CORRECTION, ASSIGNMENT_LOG_INSERT,
-  BLOCKING_ASSIGNMENT_FIELDS, SKILLED, assignmentBlockedReason, assignmentMissing,
+  BLOCKING_ASSIGNMENT_FIELDS, SKILLED, SKILLED_SQL_ARRAY, assignmentBlockedReason,
+  assignmentMissing,
   feeBasisOf, type AssignmentField, type AssignmentFieldDef,
 } from '../src/domain';
 
@@ -140,6 +141,14 @@ describe('the commit check — a referral cannot exist without its sheet', () =>
     const row = await one<{ n: string }>(
       `SELECT count(*) AS n FROM assignment_log WHERE referral_id = $1`, [inserted]);
     expect(Number(row.n)).toBe(0);
+  });
+
+  it('offers the care list as a SQL array that Postgres accepts', async () => {
+    const rows = await db.query<{ care: string }>(
+      `SELECT c.care::text AS care FROM cases c WHERE c.care = ANY(${SKILLED_SQL_ARRAY})`);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(SKILLED).toContain(r.care);
+    for (const care of SKILLED) expect(SKILLED_SQL_ARRAY).toContain(`'${care}'`);
   });
 
   it('uses the same three care types the physician trigger and SKILLED use', () => {
@@ -413,7 +422,7 @@ describe('the hour the order arrived', () => {
         `INSERT INTO referrals (case_id, provider_id, disclosure_id, referred_by)
          VALUES ($1, $2, $3, 'operator') RETURNING id`,
         [kase.id, kase.provider_id, disclosureId]);
-      await tx.query(ASSIGNMENT_LOG_INSERT, [ref!.id, '18% of job cost', 'test']);
+      await tx.query(ASSIGNMENT_LOG_INSERT, [ref!.id, '18% of job cost', 'test', null]);
       return ref!.id;
     });
 

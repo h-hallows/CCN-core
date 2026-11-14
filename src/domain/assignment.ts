@@ -32,7 +32,7 @@
  * agreed to, or a service date defaulted to today because the household never said,
  * would be exactly the false entry the section names.
  */
-import { isSkilled } from './care';
+import { SKILLED, isSkilled } from './care';
 import { asISODate } from './dates';
 
 
@@ -202,20 +202,30 @@ export function assignmentBlockedReason(missing: readonly AssignmentField[]): st
  * with a second order — and the case's own creation only where no enquiry exists,
  * because the operator opened it from a phone call. Both are server-set.
  *
- * $1 referral id · $2 fee basis · $3 recorded by.
+ * $4 is the moment the ENTRY is made, and `now()` when it is null. The application
+ * always passes null: the entry is made as the referral is made, and a path that could
+ * choose otherwise is a path that can predate a log sheet, which is the false entry
+ * § 1812.529 prohibits. It is there because the seed fabricates a history — backdated
+ * referrals, disclosures and timeline entries — and a sheet stamped today against a
+ * referral dated two months ago would read as an entry filed two months late.
+ * `tests/register.test.ts` fails if anything under the console's `app/` or `lib/` passes
+ * it a value.
+ *
+ * $1 referral id · $2 fee basis · $3 recorded by · $4 entered at, or null for now.
  */
 export const ASSIGNMENT_LOG_INSERT = `
   INSERT INTO assignment_log
     (case_id, referral_id, provider_id, order_received_at, patient_name,
      patient_address, attending_physician, service_from, service_to, fee_basis,
-     recorded_by)
+     recorded_by, created_at)
   SELECT c.id, r.id, r.provider_id,
          COALESCE(
            (SELECT max(i.received_at) FROM inquiries i
              WHERE i.household_id = h.id AND i.received_at <= c.created_at),
            c.created_at),
          h.cr_name, h.cr_address, h.physician_name,
-         c.starts_on, c.ends_on, $2, $3
+         c.starts_on, c.ends_on, $2, $3,
+         COALESCE($4::timestamptz, now())
     FROM referrals r
     JOIN cases c    ON c.id = r.case_id
     JOIN households h ON h.id = c.household_id
@@ -246,3 +256,17 @@ export const ASSIGNMENT_LOG_CORRECTION = `
     FROM assignment_log a
    WHERE a.id = $1
   RETURNING id`;
+
+
+/**
+ * The Chapter 7 care types as a SQL fragment.
+ *
+ * Passing `[...SKILLED]` as a `care_type[]` parameter looks right and is not: the driver
+ * serialises a JS array as `a,b,c`, which Postgres rejects as a malformed array literal.
+ * Every caller needs the same list in the same place, so it is built once here from
+ * SKILLED rather than written out again — a fourth care type added to SKILLED reaches
+ * every query that uses this, and `tests/assignment.test.ts` checks it against the
+ * trigger's own copy.
+ */
+export const SKILLED_SQL_ARRAY: string =
+  `ARRAY[${SKILLED.map((c) => `'${c}'`).join(', ')}]::care_type[]`;
