@@ -101,6 +101,41 @@ function longestFirst(alternation) {
   return alternation.split('|').sort((a, b) => b.length - a.length).join('|');
 }
 
+/**
+ * Fixed phrases in which a forbidden identifier is not the thing the invariant is about.
+ *
+ * `private duty nursing` is Civil Code § 1812.524's own name for the service this
+ * registry refers for. I2 bans `duty` because a duty list is work direction — a registry
+ * that tells a provider what to do on a given day is directing them, which is the line
+ * the whole model stands on. The statute's name for the care itself is the opposite kind
+ * of word, and a ruleset that refused it would mean the assignment register could not
+ * name the section it implements, or say which referrals § 1812.529 reaches.
+ *
+ * Narrow on purpose, and the narrowness is the only thing that makes it safe: an
+ * exemption is a hole, and a hole wide enough to admit `dutyChecklist` is the one that
+ * would matter. Each entry must be a multi-word phrase containing the term it excuses,
+ * and the term is excused only where the whole phrase is present, in that order.
+ * `tests/invariants.test.ts` fails if an entry is a bare word.
+ */
+export const IDENTIFIER_EXEMPT_PHRASES = [
+  'private duty nursing',
+  'private-duty nursing',
+];
+
+/** True where the term at `index` sits inside one of the exempt phrases. */
+function insideExemptPhrase(text, index, term) {
+  const lower = text.toLowerCase();
+  const needle = term.toLowerCase();
+  for (const phrase of IDENTIFIER_EXEMPT_PHRASES) {
+    const offset = phrase.indexOf(needle);
+    if (offset < 0) continue;
+    const start = index - offset;
+    if (start < 0) continue;
+    if (lower.slice(start, start + phrase.length) === phrase) return true;
+  }
+  return false;
+}
+
 export const FORBIDDEN_IDENTIFIERS = IDENTIFIER_RULES.map(({ alternation, invariant }) => ({
   pattern: new RegExp(`(?:^|[^a-zA-Z])(${longestFirst(alternation)})`, 'gi'),
   invariant,
@@ -124,7 +159,9 @@ export function findIdentifierHits(text) {
       const term = m[1];
       const after = text[m.index + m[0].length];
       if (after !== undefined && after >= 'a' && after <= 'z') continue;
-      hits.push({ index: m.index + m[0].length - term.length, match: term, invariant });
+      const index = m.index + m[0].length - term.length;
+      if (insideExemptPhrase(text, index, term)) continue;
+      hits.push({ index, match: term, invariant });
     }
   }
   return hits;

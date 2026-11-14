@@ -405,3 +405,50 @@ describe('RLS is on from the first migration', () => {
 afterAll(async () => {
   // The in-memory database goes with the process; nothing to clean up on disk.
 });
+
+describe('the one phrase the identifier rules excuse', () => {
+  /*
+   * `private duty nursing` is Civil Code § 1812.524's name for the service, and I2 bans
+   * `duty` because a duty list is work direction. Without the exemption the console
+   * could not name the chapter it implements; with a careless one it would stop catching
+   * the thing I2 exists for. So both halves are asserted, and so is the shape of the
+   * exemption itself.
+   */
+  it('lets the statutory name of the service through', async () => {
+    const { findIdentifierHits } = await import('../src/lint/forbidden.mjs');
+    expect(findIdentifierHits('Private duty nursing referrals fall under Chapter 7.'))
+      .toEqual([]);
+    expect(findIdentifierHits('a private-duty nursing assignment')).toEqual([]);
+  });
+
+  it('still catches every form of work direction', async () => {
+    const { findIdentifierHits } = await import('../src/lint/forbidden.mjs');
+    for (const bad of [
+      'dutyChecklist', 'duty_list', 'the duties of the shift', 'taskList',
+      'care_plan', 'a duty roster', 'private duty roster',
+      'private duty nursing dutyList',
+    ]) {
+      expect(findIdentifierHits(bad).length, `${bad} should be a violation`)
+        .toBeGreaterThan(0);
+    }
+  });
+
+  it('excuses only multi-word phrases that contain the term they excuse', async () => {
+    const { IDENTIFIER_EXEMPT_PHRASES, FORBIDDEN_IDENTIFIERS } =
+      await import('../src/lint/forbidden.mjs');
+    expect(IDENTIFIER_EXEMPT_PHRASES.length).toBeLessThan(5);
+    for (const phrase of IDENTIFIER_EXEMPT_PHRASES as string[]) {
+      expect(
+        phrase.trim().split(/[\s-]+/).length,
+        `"${phrase}" is not a phrase; a bare word here would be a blanket exemption`,
+      ).toBeGreaterThanOrEqual(3);
+      const excusesSomething = (FORBIDDEN_IDENTIFIERS as { pattern: RegExp }[])
+        .some(({ pattern }) => {
+          const probe = new RegExp(pattern.source, 'gi');
+          return probe.test(` ${phrase}`);
+        });
+      expect(excusesSomething,
+        `"${phrase}" excuses nothing — it contains no forbidden term`).toBe(true);
+    }
+  });
+});
