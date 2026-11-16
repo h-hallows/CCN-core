@@ -111,6 +111,20 @@ export const AUDIT_ENTITIES = {
         WHERE household_id = $1 OR case_id IN (${CASES_OF})`,
     byProvider: `SELECT id FROM documents WHERE provider_id = $1`,
   },
+  advertisement: {
+    table: 'advertising_log',
+    label: 'Advertising record entry',
+    /*
+     * Civil Code § 1812.533(c). The only register in this schema that is about the
+     * business rather than about a person: it holds what CCN said about itself in
+     * public, which is why it appears in neither span below. It is audited all the same,
+     * because who checked the advertising record and when is a fact worth having when
+     * somebody later asks whether an advertisement was known about.
+     */
+    byHousehold: null,
+    byProvider: null,
+    collection: true,
+  },
   assignment: {
     table: 'assignment_log',
     label: 'Assignment log entry',
@@ -350,7 +364,6 @@ export const UNAUDITED_TABLES: Record<string, string> = {
   operator_notifications: 'Operator-facing queue. Superseded by the specific queues.',
 
   // Written by nothing yet. Each will need an entity above when a screen touches it.
-  advertising_log: '§ 1812.533(b)(2) advertising record. No screen reads it yet.',
   coverage_gaps: 'Blocked on the nine-factor audit; deliberately unread (V1-REVIEW § 7).',
   rate_ranges: 'Reference data, not about a person.',
   testimonials: 'Blocked on the consent it requires. No screen reads it yet.',

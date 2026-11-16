@@ -182,8 +182,12 @@ export function assignmentMissing(facts: AssignmentFacts): AssignmentField[] {
 export function assignmentBlockedReason(missing: readonly AssignmentField[]): string {
   if (missing.length === 0) return '';
   const list = missing.map((f) => ASSIGNMENT_FIELDS[f].label.replace(/^The /, 'the ')).join(', ');
-  return 'Civil Code § 1812.529 requires an assignment log entry for a private duty '
-    + `nursing referral, and this record is missing ${list}.`;
+  // Kept on one line deliberately. The I2 exemption is a fixed phrase and the ruleset
+  // reads a line at a time, so breaking "private duty nursing" across a concatenation
+  // hides the exempt half and leaves `duty` looking like a work-direction violation —
+  // which is what `ccn-lint` over this package reported before it was joined up.
+  return 'Civil Code § 1812.529 requires an assignment log entry for a private duty nursing '
+    + `referral, and this record is missing ${list}.`;
 }
 
 /**

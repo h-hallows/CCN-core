@@ -85,3 +85,16 @@ export const documentKind = pgEnum('document_kind', [
 
 /** One value today. Here so an external backend can be added without a rewrite. */
 export const documentStorage = pgEnum('document_storage', ['postgres']);
+
+/**
+ * Migration 0025. Where an advertisement appeared, § 1812.533(c).
+ *
+ * The split that matters is not what kind of thing it is but whether appearing is an act
+ * or a state. The first six run until withdrawn, so their entries carry an open
+ * interval; the last three happened on a day and their entries close on it. See
+ * src/domain/advertising.ts, which holds the same list with the reasoning attached.
+ */
+export const adMedium = pgEnum('ad_medium', [
+  'website', 'directory', 'paid_search', 'paid_social', 'social_profile', 'signage',
+  'print', 'broadcast', 'mail',
+]);

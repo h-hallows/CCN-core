@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import { cases, households } from './households';
 import { providers } from './providers';
 import { referrals } from './compliance';
+import { adMedium } from './enums';
 
 void households;
 
@@ -63,16 +64,38 @@ export const feeScheduleDeliveries = pgTable('fee_schedule_deliveries', {
   beforeInterview: boolean('before_interview').notNull(),
 }, (t) => [unique().on(t.providerId, t.scheduleId)]);
 
-/** § 1812.533(c) — a record of every advertisement. A website is an advertisement. */
+/**
+ * § 1812.533(c) — a record of all advertisements, correlated to show the date and the
+ * publication, reaching back one year.
+ *
+ * An INTERVAL rather than a date, because the only publication this registry has is a
+ * website and a website does not appear on a date: it runs until something replaces it.
+ * `appearedTo` null means still appearing. See src/domain/advertising.ts and migration
+ * 0025 for why that distinction is the whole of what the section asks for.
+ *
+ * `carriedName` and `carriedContact` are § 1812.533(b)(2) — the correct name and either
+ * the street address or the correct telephone number — recorded as what the
+ * advertisement actually carried. A database check refuses a placeholder in either.
+ */
 export const advertisingLog = pgTable('advertising_log', {
   id: uuid('id').primaryKey().defaultRandom(),
-  publishedOn: date('published_on').notNull(),
+  medium: adMedium('medium').notNull(),
   publication: text('publication').notNull(),
+  appearedFrom: date('appeared_from').notNull(),
+  appearedTo: date('appeared_to'),
   reference: text('reference'),
   snapshotUrl: text('snapshot_url'),
+  carriedName: text('carried_name').notNull(),
+  carriedContact: text('carried_contact').notNull(),
+  contentHash: text('content_hash'),
   recordedBy: text('recorded_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('advertising_log_published').on(t.publishedOn)]);
+  correctsId: uuid('corrects_id'),
+  correctionNote: text('correction_note'),
+}, (t) => [
+  index('advertising_log_appeared_from').on(t.appearedFrom),
+  index('advertising_log_corrects_idx').on(t.correctsId),
+]);
 
 /**
  * Operator-maintained rate ranges for the marketing pages. Never written into page

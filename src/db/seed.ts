@@ -13,6 +13,7 @@ import { addDays, civilLA, formatISODate } from '../domain/dates';
 import { writtenStatementDueOn } from '../domain/businessDays';
 import { isSkilled } from '../domain/care';
 import { ASSIGNMENT_LOG_INSERT, feeBasisOf } from '../domain/assignment';
+import { ADVERTISING_LOG_INSERT } from '../domain/advertising';
 
 const NOW = new Date();
 const TODAY = civilLA(NOW);
@@ -819,6 +820,44 @@ async function seed(handle: DbHandle): Promise<void> {
     );
   }
 
+  /*
+   * The § 1812.533(c) advertising record.
+   *
+   * ON THE NAME AND NUMBER IN THESE ROWS. Everything else in this seed is invented, and
+   * so is this — but `carried_name` is the one invented value that could be mistaken for
+   * a filed trading name, which `lib/brand.ts` is careful never to produce. So the name
+   * here is 'CCN', the repository's own word for this business and not a name anybody
+   * registered, and the number is in the 310-555-01xx range the NANP reserves for
+   * fiction. Neither can be dialled and neither can be believed. The check on the table
+   * refuses a PENDING sentinel, which is what this deployment actually serves today, so
+   * a seed could not have used the real values even if that were a good idea.
+   *
+   * WHAT THE SHAPE DEMONSTRATES. A website that ran, came down, and was replaced ten
+   * days later by a new one still running; a directory listing opened later and never
+   * closed; and a single-date advertisement in a local paper. The nine days between the
+   * old site coming down and the new one going up are a real hole in the record, placed
+   * before the directory listing opened so nothing else covers them — the one problem in this
+   * system with no remedy. An assignment log entry can be filed late and say so. You
+   * cannot retrospectively advertise, and a record reconstructed from memory months
+   * afterwards is the false record § 1812.533(b)(1) is about. The screen says so instead
+   * of offering a button.
+   */
+  const AD_NAME = 'CCN';
+  const AD_PHONE = '(310) 555-0147';
+  const ADS: [string, string, number, number | null, string | null, number][] = [
+    // medium, publication, from, to (null = still running), reference, recorded N days ago
+    ['website', 'ccn.example', -330, -300, 'the first site, retired at the rebuild', -330],
+    ['website', 'ccn.example', -290, null, 'the current site', -290],
+    ['directory', 'Westside Care Directory', -240, null, 'listing 4471', -238],
+    ['print', 'Century City News', -200, -200, 'quarter page, p14', -197],
+  ];
+  for (const [medium, publication, from, to, reference, recorded] of ADS) {
+    await q(ADVERTISING_LOG_INSERT, [
+      medium, publication, d(from), to === null ? null : d(to), reference, null,
+      AD_NAME, AD_PHONE, null, 'operator', d(recorded),
+    ]);
+  }
+
   const counts = await q<{ t: string; n: string }>(
     `SELECT 'providers' AS t, count(*)::text AS n FROM providers
      UNION ALL SELECT 'credentials', count(*)::text FROM credentials
@@ -828,6 +867,7 @@ async function seed(handle: DbHandle): Promise<void> {
      UNION ALL SELECT 'disclosures', count(*)::text FROM disclosures
      UNION ALL SELECT 'timeline_entries', count(*)::text FROM timeline_entries
      UNION ALL SELECT 'metric_events', count(*)::text FROM metric_events
+     UNION ALL SELECT 'advertising_log', count(*)::text FROM advertising_log
      ORDER BY t`,
   );
   for (const row of counts) console.log(`  ${row.t.padEnd(18)} ${row.n}`);
