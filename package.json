@@ -4,7 +4,7 @@
     "type": "git",
     "url": "git+https://github.com/h-hallows/CCN-core.git"
   },
-  "version": "0.1.28",
+  "version": "0.1.29",
   "private": false,
   "type": "module",
   "description": "Owns the database: schema, migrations, the credential engine, business-day arithmetic and the copy-lint ruleset. No app, no routes.",
@@ -16,6 +16,7 @@
     "./env": "./src/env.ts",
     "./lint": "./src/lint/forbidden.mjs",
     "./testing": "./src/testing/db.ts",
+    "./testing/sqlClock": "./src/testing/sqlClock.ts",
     "./mail": "./src/mail/index.ts"
   },
   "bin": {
