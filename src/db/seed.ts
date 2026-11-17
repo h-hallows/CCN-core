@@ -795,8 +795,15 @@ async function seed(handle: DbHandle): Promise<void> {
   ];
   for (const [service, level, low, high] of RATES) {
     await q(
-      `INSERT INTO rate_ranges (service_key, credential_level, low, high, effective_from, note)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      /*
+       * 'seed' rather than an operator's name, and the truth about these rows: nobody
+       * posted them, a fixture wrote them. The console refuses to publish a band
+       * without an author, and a seeded band claiming one would make the public pricing
+       * page look maintained when it is demonstration data.
+       */
+      `INSERT INTO rate_ranges
+         (service_key, credential_level, low, high, effective_from, note, posted_by)
+       VALUES ($1,$2,$3,$4,$5,$6,'seed')
        ON CONFLICT (service_key, credential_level, effective_from) DO NOTHING`,
       [service, level, low, high, d(-30),
         'Provider-set and negotiated directly with the household.'],

@@ -110,7 +110,15 @@ export const rateRanges = pgTable('rate_ranges', {
   high: numeric('high', { precision: 6, scale: 2 }).notNull(),
   effectiveFrom: date('effective_from').notNull(),
   note: text('note'),
+  /**
+   * Migration 0026. A band is an advertising claim under § 1812.533(b)(1), so the
+   * record says who made it and when — `effective_from` alone cannot tell a band
+   * posted in March for April from one written last night and dated March.
+   */
+  postedAt: timestamp('posted_at', { withTimezone: true }).notNull().defaultNow(),
+  postedBy: text('posted_by').notNull(),
 }, (t) => [
   unique().on(t.serviceKey, t.credentialLevel, t.effectiveFrom),
   check('rate_range_ordered', sql`${t.high} >= ${t.low}`),
+  index('rate_ranges_in_force').on(t.serviceKey, t.credentialLevel, t.effectiveFrom),
 ]);

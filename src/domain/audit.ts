@@ -111,6 +111,19 @@ export const AUDIT_ENTITIES = {
         WHERE household_id = $1 OR case_id IN (${CASES_OF})`,
     byProvider: `SELECT id FROM documents WHERE provider_id = $1`,
   },
+  rate_band: {
+    table: 'rate_ranges',
+    label: 'Published rate band',
+    /*
+     * § 1812.533(b)(1). What the public pages tell a household that care costs here.
+     * About the business rather than about a person, like the advertising record, and
+     * audited for the same reason: somebody will later ask when a band changed and on
+     * whose say-so.
+     */
+    byHousehold: null,
+    byProvider: null,
+    collection: true,
+  },
   advertisement: {
     table: 'advertising_log',
     label: 'Advertising record entry',
@@ -365,6 +378,5 @@ export const UNAUDITED_TABLES: Record<string, string> = {
 
   // Written by nothing yet. Each will need an entity above when a screen touches it.
   coverage_gaps: 'Blocked on the nine-factor audit; deliberately unread (V1-REVIEW § 7).',
-  rate_ranges: 'Reference data, not about a person.',
   testimonials: 'Blocked on the consent it requires. No screen reads it yet.',
 };

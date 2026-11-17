@@ -14,3 +14,4 @@ export * from './areas';
 export * from './audit';
 export * from './assignment';
 export * from './advertising';
+export * from './rates';
